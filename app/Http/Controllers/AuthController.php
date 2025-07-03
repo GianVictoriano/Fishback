@@ -34,6 +34,30 @@ class AuthController extends Controller
         return redirect('/'); // Redirect to homepage or dashboard
     }
 
+public function showRegisterForm()
+{
+    return view('pages.register');
+}
+
+public function register(Request $request)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'email' => 'required|email|unique:users',
+        'password' => 'required|confirmed|min:6'
+    ]);
+
+    $user = \App\Models\User::create([
+        'name' => $request->name,
+        'email' => $request->email,
+        'password' => bcrypt($request->password),
+    ]);
+
+    auth()->login($user);
+
+    return redirect('/'); // or wherever you want to redirect
+}
+
     public function logout(Request $request)
     {
         auth()->logout();
