@@ -12,6 +12,7 @@
         <div>
             <a href="/" class="text-sm text-blue-600 hover:underline mr-4">Home</a>
             <a href="/about" class="text-sm text-blue-600 hover:underline">About</a>
+            <a href="/login" class="text-sm text-blue-600 hover:underline">login</a>
         </div>
     </nav>
 

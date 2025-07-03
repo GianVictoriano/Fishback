@@ -9,9 +9,13 @@ use App\Models\User;
 
 class AuthController extends Controller
 {
+    public function showLoginForm()
+    {
+        return view('pages.login'); // Adjust path if needed
+    }
+
     public function login(Request $request)
     {
-        
         $request->validate([
             'email' => 'required|email',
             'password' => 'required'
@@ -25,9 +29,14 @@ class AuthController extends Controller
             ]);
         }
 
-        return response()->json([
-            'token' => $user->createToken('mobile-token')->plainTextToken,
-            'user' => $user,
-        ]);
+        auth()->login($user); // Log user in via session
+
+        return redirect('/'); // Redirect to homepage or dashboard
+    }
+
+    public function logout(Request $request)
+    {
+        auth()->logout();
+        return redirect('/login');
     }
 }
