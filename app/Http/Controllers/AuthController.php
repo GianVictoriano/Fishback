@@ -62,6 +62,6 @@ public function register(Request $request)
 
     auth()->login($user);
 
-    return redirect('/')->with('success', 'Registration successful!');
+    return redirect('/login')->with('success', 'Registration successful!');
 }
 }
