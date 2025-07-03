@@ -43,8 +43,15 @@ public function register(Request $request)
 {
     $request->validate([
         'name' => 'required|string|max:255',
-        'email' => 'required|email|unique:users',
-        'password' => 'required|confirmed|min:6'
+        'email' => [
+            'required',
+            'email',
+            'regex:/^[0-9]{2}-[0-9]{5}@g\.batstate-u\.edu\.ph$/',
+            'unique:users,email'
+        ],
+        'password' => 'required|string|min:8|confirmed',
+    ], [
+        'email.regex' => 'Only Batangas State University student emails are allowed.',
     ]);
 
     $user = \App\Models\User::create([
@@ -55,12 +62,6 @@ public function register(Request $request)
 
     auth()->login($user);
 
-    return redirect('/'); // or wherever you want to redirect
+    return redirect('/')->with('success', 'Registration successful!');
 }
-
-    public function logout(Request $request)
-    {
-        auth()->logout();
-        return redirect('/login');
-    }
 }
