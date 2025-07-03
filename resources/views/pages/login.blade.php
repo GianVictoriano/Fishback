@@ -35,7 +35,7 @@
     </button>
 
     <!-- 🔽 Added Links Below Button -->
-    <div class="flex justify-between mt-4 text-sm">
+    <div class="flex justi.blfy-between mt-4 text-sm">
         <a href="{{ url('/forgot-password') }}" class="text-blue-600 hover:underline font-semibold">
             Forgot password?
         </a>
