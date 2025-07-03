@@ -2,66 +2,78 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use App\Models\User;
 
 class AuthController extends Controller
 {
+    /* ----------  VIEWS  ---------- */
     public function showLoginForm()
     {
-        return view('pages.login'); // Adjust path if needed
+        return view('pages.login');
+    }
+
+    public function showRegisterForm()
+    {
+        return view('pages.register');
+    }
+
+    /* ----------  ACTIONS  ---------- */
+    public function register(Request $request)
+    {
+        $request->validate([
+            'name'     => 'required|string|max:255',
+            'email'    => [
+                'required',
+                'email',
+                'regex:/^[0-9]{2}-[0-9]{5}@g\.batstate-u\.edu\.ph$/',
+                'unique:users,email',
+            ],
+            'password' => 'required|string|min:8|confirmed',
+        ], [
+            'email.regex' => 'Only Batangas State University student emails are allowed.',
+        ]);
+
+        $user = User::create([
+            'name'     => $request->name,
+            'email'    => $request->email,
+            'password' => bcrypt($request->password),
+            'role'     => 'journalist',            // default role
+        ]);
+
+        auth()->login($user);
+
+        return redirect()->route('journalist')->with('success', 'Registration successful!');
     }
 
     public function login(Request $request)
     {
         $request->validate([
-            'email' => 'required|email',
-            'password' => 'required'
+            'email'    => 'required|email',
+            'password' => 'required',
         ]);
 
         $user = User::where('email', $request->email)->first();
 
-        if (! $user || ! Hash::check($request->password, $user->password)) {
+        if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.']
+                'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
-        auth()->login($user); // Log user in via session
+        auth()->login($user);
 
-       return redirect()->route('admin'); // Redirect to homepage or dashboard
+        // Redirect by role
+        return $user->role === 'admin'
+            ? redirect()->route('admin')
+            : redirect()->route('journalist');
     }
 
-public function showRegisterForm()
-{
-    return view('pages.register');
-}
-
-public function register(Request $request)
-{
-    $request->validate([
-        'name' => 'required|string|max:255',
-        'email' => [
-            'required',
-            'email',
-            'regex:/^[0-9]{2}-[0-9]{5}@g\.batstate-u\.edu\.ph$/',
-            'unique:users,email'
-        ],
-        'password' => 'required|string|min:8|confirmed',
-    ], [
-        'email.regex' => 'Only Batangas State University student emails are allowed.',
-    ]);
-
-    $user = \App\Models\User::create([
-        'name' => $request->name,
-        'email' => $request->email,
-        'password' => bcrypt($request->password),
-    ]);
-
-    auth()->login($user);
-
-    return redirect('/login')->with('success', 'Registration successful!');
-}
+    public function logout()
+    {
+        auth()->logout();
+        return redirect()->route('login');
+    }
 }
