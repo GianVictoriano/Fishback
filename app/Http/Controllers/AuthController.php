@@ -31,7 +31,7 @@ class AuthController extends Controller
 
         auth()->login($user); // Log user in via session
 
-        return redirect('/'); // Redirect to homepage or dashboard
+       return redirect()->route('admin'); // Redirect to homepage or dashboard
     }
 
 public function showRegisterForm()

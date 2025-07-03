@@ -8,6 +8,9 @@ use App\Http\Controllers\AuthController;
 Route::get('/', [PageController::class, 'home'])->name('home');
 Route::get('/about', [PageController::class, 'about'])->name('about');
 Route::get('/register', [AuthController::class, 'showRegisterForm'])->name('register');
+Route::get('/admin', function () {
+    return view('pages.admin');
+})->name('admin');
 
 // Auth routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
