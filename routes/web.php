@@ -18,10 +18,14 @@ Route::post('/logout',   [AuthController::class, 'logout'])->name('logout');
 Route::post('/register', [AuthController::class, 'register']);
 
 // Dashboards (protected)
-Route::get('/admin', function () {
-    return view('pages.admin');
-})->name('admin')->middleware(['auth', 'role:admin']);
+Route::middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('/admin', function () {
+        return view('pages.admin');
+    })->name('admin');
+});
 
-Route::get('/journalist', function () {
-    return view('pages.journalist');
-})->name('journalist')->middleware(['auth', 'role:journalist']);
+Route::middleware(['auth', 'role:journalist'])->group(function () {
+    Route::get('/journalist', function () {
+        return view('pages.journalist');
+    })->name('journalist');
+});
