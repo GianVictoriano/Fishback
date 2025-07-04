@@ -4,6 +4,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\AuthController;
 
+
+Route::get('/test-role', function () {
+    return 'You are allowed!';
+})->middleware('role:journalist');
+
+
 // Public pages
 Route::get('/',        [PageController::class, 'home'])->name('home');
 Route::get('/about',   [PageController::class, 'about'])->name('about');
