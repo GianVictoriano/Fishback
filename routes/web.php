@@ -31,3 +31,13 @@ Route::middleware('guest')->group(function () {
     Route::get('/reset-password/{token}', [AuthController::class, 'showResetPasswordForm'])->name('password.reset');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update');
 });
+
+Route::middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('/admin', fn () => view('pages.admin'))->name('admin');
+
+    // ✅ Show the Journalist Management page
+    Route::get('/admin/journalist', [PageController::class, 'journalist'])->name('admin.journalist');
+
+    // ✅ Handle form submission for creating a journalist
+    Route::post('/admin/journalist', [PageController::class, 'storeJournalist'])->name('admin.journalist.store');
+});
