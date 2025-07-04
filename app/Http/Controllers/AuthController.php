@@ -37,29 +37,33 @@ class AuthController extends Controller
 
     // Registration
     public function register(Request $request)
-    {
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => [
-                'required',
-                'email',
-                'regex:/^[0-9]{2}-[0-9]{5,}@g\.batstate-u\.edu\.ph$/',
-                'unique:users,email',
-            ],
-            'password' => 'required|string|min:8|confirmed',
-        ], [
-            'email.regex' => 'Only Batangas State University student emails are allowed.',
-        ]);
+{
+    $request->validate([
+        'fname'    => 'required|string|max:255',
+        'lname'    => 'required|string|max:255',
+        'email'    => [
+            'required',
+            'email',
+            'regex:/^[0-9]{2}-[0-9]{5,}@g\.batstate-u\.edu\.ph$/',
+            'unique:users,email',
+        ],
+        'password' => 'required|string|min:8|confirmed',
+    ], [
+        'email.regex' => 'Only Batangas State University student emails are allowed.',
+    ]);
 
-        $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => bcrypt($request->password),
-            'role'     => 'user', // default role
-        ]);
+    User::create([
+        'fname'    => $request->fname,
+        'lname'    => $request->lname,
+        'email'    => $request->email,
+        'password' => bcrypt($request->password),
+        'role'     => 'user',
+        'name'     => $request->fname . ' ' . $request->lname, // for compatibility
+    ]);
 
-        return redirect()->route('login')->with('success', 'Account created! Please login.');
-    }
+    return redirect()->route('login')
+                     ->with('success', 'Account created! Please login.');
+}
 
     // Login
     public function login(Request $request)
