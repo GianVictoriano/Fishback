@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    /* ----------  VIEWS  ---------- */
+    /* ───────────  VIEWS  ─────────── */
     public function showLoginForm()
     {
         return view('pages.login');
@@ -20,34 +20,36 @@ class AuthController extends Controller
         return view('pages.register');
     }
 
-    /* ----------  ACTIONS  ---------- */
+    /* ───────────  ACTIONS  ─────────── */
+
+    /** Handle registration */
     public function register(Request $request)
-    {
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => [
-                'required',
-                'email',
-                'regex:/^[0-9]{2}-[0-9]{5}@g\.batstate-u\.edu\.ph$/',
-                'unique:users,email',
-            ],
-            'password' => 'required|string|min:8|confirmed',
-        ], [
-            'email.regex' => 'Only Batangas State University student emails are allowed.',
-        ]);
+{
+    $request->validate([
+        'name'     => 'required|string|max:255',
+        'email'    => [
+            'required',
+            'email',
+            'regex:/^[0-9]{2}-[0-9]{5,}@g\.batstate-u\.edu\.ph$/',
+            'unique:users,email',
+        ],
+        'password' => 'required|string|min:8|confirmed',
+    ], [
+        'email.regex' => 'Only Batangas State University student emails are allowed.',
+    ]);
 
-        $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => bcrypt($request->password),
-            'role'     => 'journalist',            // default role
-        ]);
+    $user = User::create([
+        'name'     => $request->name,
+        'email'    => $request->email,
+        'password' => bcrypt($request->password),
+        'role'     => 'user', // ✅ now 'user'
+    ]);
 
-        auth()->login($user);
+    return redirect()->route('login')
+                     ->with('success', 'Account created! Please login.');
+}
 
-        return redirect()->route('journalist')->with('success', 'Registration successful!');
-    }
-
+    /** Handle login */
     public function login(Request $request)
     {
         $request->validate([
@@ -65,12 +67,16 @@ class AuthController extends Controller
 
         auth()->login($user);
 
-        // Redirect by role
-        return $user->role === 'admin'
-            ? redirect()->route('admin')
-            : redirect()->route('journalist');
+        // Redirect based on role
+        return match ($user->role) {
+            'admin'      => redirect()->route('admin'),
+            'journalist' => redirect()->route('journalist'),
+            'user'       => redirect('/user'), // goes to user.blade.php
+            default      => redirect('/'),     // fallback
+        };
     }
 
+    /** Handle logout */
     public function logout()
     {
         auth()->logout();
