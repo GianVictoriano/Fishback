@@ -39,7 +39,7 @@
 
             <!-- 🔽 Added Links Below Button -->
             <div class="flex justify-between mt-4 text-sm">
-                <a href="{{ url('/forgot-password') }}" class="text-blue-600 hover:underline font-semibold">
+               <a href="{{ route('password.request') }}" class="text-blue-600 hover:underline font-semibold">
                     Forgot password?
                 </a>
                 <a href="{{ url('/register') }}" class="text-blue-600 hover:underline font-semibold">
