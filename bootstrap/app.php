@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use App\Http\Middleware\ForceApiAuthentication;
 use App\Http\Middleware\Authenticate;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
@@ -14,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
     health: '/up',
 )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->api([
+            ForceApiAuthentication::class,
+        ]);
         $middleware->alias([
             'auth' => Authenticate::class,
         ]);

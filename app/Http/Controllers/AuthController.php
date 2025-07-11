@@ -36,45 +36,77 @@ class AuthController extends Controller
 
     public function handleGoogleCallback(Request $request)
     {
-        $request->validate([
-            'token' => 'required|string',
-        ]);
-
         try {
-            $googleUser = Socialite::driver('google')->userFromToken($request->token);
+            $token = $request->input('token');
+            Log::info('Google Auth: Received token.', ['token' => $token ? 'Exists' : 'Missing']);
 
-            // Find user by email, or create them if they don't exist.
-            $user = User::firstOrNew(['email' => $googleUser->getEmail()]);
+            if (!$token) {
+                Log::error('Google Auth: No token provided in the request.');
+                return response()->json(['error' => 'No token provided'], 400);
+            }
 
-            // This block only runs if the user is being created for the first time.
+            $clientId = config('services.google.client_id');
+            Log::info('Google Auth: Using Client ID for verification.', ['client_id' => $clientId]);
+
+            if (!$clientId) {
+                Log::critical('Google Auth: GOOGLE_CLIENT_ID is not set in config/services.php or .env file.');
+                return response()->json(['error' => 'Server configuration error.'], 500);
+            }
+
+            $client = new \Google_Client(['client_id' => $clientId]);
+            $payload = $client->verifyIdToken($token);
+
+            if (!$payload) {
+                Log::error('Google Auth: Token verification failed. The token is invalid.', ['token' => $token]);
+                return response()->json(['error' => 'Invalid token'], 401);
+            }
+
+            Log::info('Google Auth: Token successfully verified.', ['payload' => $payload]);
+
+            // Check if email domain is allowed
+            $email = $payload['email'] ?? null;
+            if (!str_ends_with($email, '@g.batstate-u.edu.ph')) {
+                Log::warning('Google Auth: Forbidden email domain.', ['email' => $email]);
+                return response()->json(['error' => 'Only @g.batstate-u.edu.ph emails are allowed'], 403);
+            }
+
+            // Find or create user
+            $user = User::firstOrNew(['email' => $email]);
+            Log::info('Google Auth: User lookup.', ['email' => $email, 'user_exists' => $user->exists]);
+
             if (!$user->exists) {
-                $user->name = $googleUser->getName();
-                $user->password = Hash::make(Str::random(24)); // Set a random password ONCE
-                $user->google_id = $googleUser->getId();
-                $user->save(); // Save the new user
-            } else {
-                // If user exists, just ensure their google_id is set if it's missing
-                if (!$user->google_id) {
-                    $user->google_id = $googleUser->getId();
-                    $user->save();
-                }
+                $user->name = $payload['name'] ?? $payload['email'];
+                $user->password = Hash::make(Str::random(24));
+                $user->google_id = $payload['sub'];
+                $user->email_verified_at = now();
+                $user->save();
+                Log::info('Google Auth: New user created.', ['user_id' => $user->id]);
+
+                // Create profile
+                $user->profile()->create([
+                    'name' => $payload['name'] ?? $payload['email'],
+                    'avatar' => $payload['picture'] ?? null,
+                ]);
+                Log::info('Google Auth: New profile created for user.', ['user_id' => $user->id]);
             }
 
-            // Create a profile if one doesn't exist
-            if (!$user->profile) {
-                $user->profile()->create([
-                    'name' => $googleUser->getName(),
-                    'avatar' => $googleUser->getAvatar(),
-                ]);
-            }
+            // Create token
+            $apiToken = $user->createToken('auth_token')->plainTextToken;
+            Log::info('Google Auth: API token created for user.', ['user_id' => $user->id]);
 
             return response()->json([
-                'token' => $user->createToken('google-token')->plainTextToken,
-                'user' => $user->fresh()->load('profile'),
+                'token' => $apiToken,
+                'token_type' => 'Bearer',
+                'user' => $user->load('profile')
             ]);
+
         } catch (\Exception $e) {
-            Log::error('Google Auth Error: ' . $e->getMessage());
-            return response()->json(['error' => 'Invalid credentials provided. Could not log in with Google.'], 401);
+            Log::error('Google Auth: An exception occurred.', [
+                'error_message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json(['error' => 'Authentication failed: ' . $e->getMessage()], 500);
         }
     }
 

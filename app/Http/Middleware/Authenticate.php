@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Auth\Factory as Auth;
+use Illuminate\Support\Facades\Log;
 
 class Authenticate
 {
@@ -24,4 +25,15 @@ class Authenticate
 
         return $next($request);
     }
+    protected function redirectTo($request)
+{
+    if (! $request->expectsJson()) {
+        Log::info('Authentication failed', [
+            'token' => $request->bearerToken(),
+            'headers' => $request->headers->all(),
+            'ip' => $request->ip(),
+        ]);
+        return route('login');
+    }
+}
 }
