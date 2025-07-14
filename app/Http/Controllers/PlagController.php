@@ -43,7 +43,7 @@ class PlagController extends Controller
             'properties' => [
                 'sandbox' => true,
                 'webhooks' => [
-                    'status' => 'https://9758-2001-fd8-cb75-6b00-5599-6390-d2b1-3f1a.ngrok-free.app/api/copyleaks/webhook/' . $scanId
+                    'status' => 'https://00570985962b.ngrok-free.app/api/copyleaks/webhook/' . $scanId
                 ]
             ]
         ]);
