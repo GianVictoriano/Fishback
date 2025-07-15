@@ -22,6 +22,7 @@ class TopicController extends Controller
         $validator = Validator::make($request->all(), [
             'title' => 'required|string|max:255',
             'body' => 'nullable|string',
+            'category' => 'required|string|max:50',
         ]);
 
         if ($validator->fails()) {
@@ -32,6 +33,7 @@ class TopicController extends Controller
             'user_id' => $request->user()->id,
             'title'   => $request->title,
             'body'    => $request->body,
+            'category' => $request->category,
         ]);
 
         return response()->json($topic, 201);
