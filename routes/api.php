@@ -9,10 +9,14 @@ use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
 <<<<<<< HEAD
+<<<<<<< HEAD
 use App\Http\Controllers\UserModuleController;
 =======
 use App\Http\Controllers\BrandingController;
 >>>>>>> origin/pc
+=======
+use App\Http\Controllers\BrandingController;
+>>>>>>> f99ae40cfd1fa71dd72b4485715cf2430dd508fc
 
 Route::get('/ping', function () {
     return ['message' => 'API is working!'];
@@ -28,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/users', [UserController::class, 'index']);
 <<<<<<< HEAD
+<<<<<<< HEAD
 
     // Routes for module and collaborator management
     Route::get('/modules', [UserModuleController::class, 'getModules']);
@@ -38,6 +43,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/me', [UserController::class, 'me']);
     Route::post('/branding', [BrandingController::class, 'update']);
 >>>>>>> origin/pc
+=======
+    Route::get('/users/me', [UserController::class, 'me']);
+    Route::post('/branding', [BrandingController::class, 'update']);
+>>>>>>> f99ae40cfd1fa71dd72b4485715cf2430dd508fc
 });
 
 Route::post('/posts', [PostController::class, 'store']);
