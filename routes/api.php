@@ -8,10 +8,13 @@ use App\Http\Controllers\PlagController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\BrandingController;
 
 Route::get('/ping', function () {
     return ['message' => 'API is working!'];
 });
+
+Route::get('/branding', [BrandingController::class, 'index']);
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/auth/google', [AuthController::class, 'handleGoogleCallback']);
@@ -20,6 +23,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/profile', [ProfileController::class, 'update']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users/me', [UserController::class, 'me']);
+    Route::post('/branding', [BrandingController::class, 'update']);
 });
 
 Route::post('/posts', [PostController::class, 'store']);
