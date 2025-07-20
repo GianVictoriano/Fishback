@@ -54,6 +54,14 @@ class User extends Authenticatable
     }
 
     /**
+     * The modules that are assigned to the user.
+     */
+    public function modules()
+    {
+        return $this->belongsToMany(Module::class, 'user_module_assignments');
+    }
+
+    /**
      * Send the password reset notification.
      *
      * @param  string  $token
