@@ -3,14 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Module;
+use App\Models\User;
 
 class Profile extends Model
 {
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+    use HasFactory;
 
     protected $fillable = [
         'user_id',
         'role',
+        'level',
         'avatar',
         'name',
         'program',
@@ -21,5 +25,13 @@ class Profile extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The modules that belong to the profile.
+     */
+    public function modules()
+    {
+        return $this->belongsToMany(Module::class, 'profile_module');
     }
 }

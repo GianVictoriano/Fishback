@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Profile;
 use Illuminate\Http\Request;
 
 class ProfileController extends Controller
@@ -14,9 +15,9 @@ class ProfileController extends Controller
      */
     public function show(Request $request)
     {
-        return response()->json([
-            'user' => $request->user()->load('profile')
-        ]);
+        // Eager-load the modules relationship along with the profile
+        $profile = Profile::with('modules')->where('user_id', $request->user()->id)->firstOrFail();
+        return response()->json($profile);
     }
 
     /**

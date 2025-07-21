@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PlagController;
+use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
@@ -25,6 +26,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users', [UserController::class, 'index']);
     Route::get('/users/me', [UserController::class, 'me']);
     Route::post('/branding', [BrandingController::class, 'update']);
+
+    // Module Management Routes
+    Route::get('/modules', [ModuleController::class, 'getModules']);
+    Route::get('/collaborators', [ModuleController::class, 'getCollaborators']);
+    Route::post('/collaborators/{profile}/modules', [ModuleController::class, 'updateCollaboratorModules']);
 });
 
 Route::post('/posts', [PostController::class, 'store']);

@@ -31,7 +31,7 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $user->createToken('mobile-token')->plainTextToken,
-            'user' => $user->load('profile'),
+            'user' => $user->load(['profile.modules']),
         ]);
     }
 
@@ -98,7 +98,7 @@ class AuthController extends Controller
             return response()->json([
                 'token' => $apiToken,
                 'token_type' => 'Bearer',
-                'user' => $user->load('profile')
+                'user' => $user->load(['profile.modules'])
             ]);
 
         } catch (\Exception $e) {
