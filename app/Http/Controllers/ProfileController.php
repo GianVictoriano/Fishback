@@ -43,6 +43,7 @@ class ProfileController extends Controller
 
         // Update Profile model, ensuring existing values are not nulled out if not provided
         $user->profile()->update([
+            'name' => $validatedData['name'] ?? $user->profile->name,
             'program' => $validatedData['program'] ?? $user->profile->program,
             'section' => $validatedData['section'] ?? $user->profile->section,
             'description' => $validatedData['description'] ?? $user->profile->description,

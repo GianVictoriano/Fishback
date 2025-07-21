@@ -12,7 +12,7 @@ class TopicController extends Controller
     // GET /api/topics
     public function index()
     {
-        $topics = Topic::with('user:id,name', 'comments')->latest()->get();
+        $topics = Topic::with('user:id,name', 'comments.user.profile')->latest()->get();
         return response()->json($topics);
     }
 
@@ -42,7 +42,7 @@ class TopicController extends Controller
     // GET /api/topics/{topic}
     public function show(Topic $topic)
     {
-        $topic->load('user:id,name', 'comments.user:id,name');
+        $topic->load('user:id,name', 'comments.user.profile');
         return response()->json($topic);
     }
 }
