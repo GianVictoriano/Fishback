@@ -71,4 +71,19 @@ class ModuleController extends Controller
 
         return response()->json(['message' => 'Modules updated successfully']);
     }
+
+    // Update the position of a specific collaborator
+    public function updatePosition(Request $request, Profile $profile)
+    {
+        Gate::authorize('assign-modules', $profile); // Re-use the same gate for now
+
+        $validated = $request->validate([
+            'position' => 'nullable|string|max:255',
+        ]);
+
+        $profile->position = $validated['position'];
+        $profile->save();
+
+        return response()->json(['message' => 'Position updated successfully.', 'profile' => $profile]);
+    }
 }

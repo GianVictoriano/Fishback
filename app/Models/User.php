@@ -63,4 +63,12 @@ class User extends Authenticatable
     {
         $this->notify(new CustomResetPasswordNotification($token));
     }
+
+    /**
+     * The group chats that the user is a member of.
+     */
+    public function groupChats()
+    {
+        return $this->belongsToMany(GroupChat::class, 'group_chat_members', 'user_id', 'group_chat_id');
+    }
 }
