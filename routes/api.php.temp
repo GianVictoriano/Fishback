@@ -14,8 +14,6 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\CommentController;
-use App\Http\Controllers\BrandingController;
-use App\Http\Controllers\ProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -23,33 +21,20 @@ use App\Http\Controllers\ProfileController;
 |--------------------------------------------------------------------------
 */
 
-// Health check & branding
-Route::get('/ping', function () {
-    return ['message' => 'API is working!'];
-});
-Route::get('/branding', [BrandingController::class, 'index']);
-
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLinkEmail']);
 Route::post('/reset-password', [PasswordResetController::class, 'reset']);
 Route::post('/plagiarism-webhook', [PlagController::class, 'webhook']);
-Route::post('/auth/google', [AuthController::class, 'handleGoogleCallback']);
 Route::get('/topics', [TopicController::class, 'index']);
 Route::get('/topics/{topic}', [TopicController::class, 'show']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
-    // Auth/User
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', fn(Request $request) => $request->user());
     Route::get('/users/me', [UserController::class, 'me']);
-    Route::get('/users', [UserController::class, 'index']);
-    Route::get('/profile', [ProfileController::class, 'show']);
-
-    // Branding
-    Route::post('/branding', [BrandingController::class, 'update']);
 
     // Group Chat & Messages
     Route::get('/group-chats', [GroupChatController::class, 'index']);
@@ -79,9 +64,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Forum Topics & Comments
     Route::post('/topics', [TopicController::class, 'store']);
     Route::post('/topics/{topic}/comments', [CommentController::class, 'store']);
-
+    
     // Posts
     Route::post('/posts', [PostController::class, 'store']);
 });
-
-?>

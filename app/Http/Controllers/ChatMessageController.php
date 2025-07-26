@@ -26,12 +26,17 @@ class ChatMessageController extends Controller
     {
         $request->validate([
             'message' => 'required|string',
+            'system' => 'sometimes|boolean',
         ]);
 
+        $isSystem = $request->boolean('system', false);
+        $userId = $isSystem ? null : Auth::id();
+
         $message = ChatMessage::create([
-            'user_id' => Auth::id(),
+            'user_id' => $userId,
             'message' => $request->message,
             'group_chat_id' => $groupChatId,
+            'system' => $isSystem,
         ]);
 
         // Eager load the user relationship for the created message

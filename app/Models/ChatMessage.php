@@ -13,6 +13,16 @@ class ChatMessage extends Model
         'user_id',
         'message',
         'group_chat_id',
+        'system', // boolean: true if this is a system message
+    ];
+
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
+    protected $casts = [
+        'system' => 'boolean',
     ];
 
     public function user()

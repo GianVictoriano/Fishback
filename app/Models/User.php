@@ -72,3 +72,4 @@ class User extends Authenticatable
         return $this->belongsToMany(GroupChat::class, 'group_chat_members', 'user_id', 'group_chat_id');
     }
 }
+
