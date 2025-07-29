@@ -14,6 +14,7 @@ class ChatMessage extends Model
         'message',
         'group_chat_id',
         'system', // boolean: true if this is a system message
+        'type', // 'sent', 'approve', 'reject'
     ];
 
     /**
@@ -23,6 +24,7 @@ class ChatMessage extends Model
      */
     protected $casts = [
         'system' => 'boolean',
+        'type' => 'string',
     ];
 
     public function user()

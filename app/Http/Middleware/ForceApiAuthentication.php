@@ -18,26 +18,28 @@ class ForceApiAuthentication
      * @return \Symfony\Component\HttpFoundation\Response
      */
     public function handle(Request $request, Closure $next)
-    {
-        $token = $request->bearerToken();
+{
+    $token = $request->bearerToken();
 
-        if ($token) {
-            Log::info('[ForceApiAuthentication] Bearer token found in request.');
-            
-            // Find the token in the database
-            $accessToken = PersonalAccessToken::findToken($token);
+    if ($token) {
+        Log::info('[ForceApiAuthentication] Bearer token found in request.');
+        
+        // Find the token in the database
+        $accessToken = PersonalAccessToken::findToken($token);
 
-            if ($accessToken) {
-                Log::info('[ForceApiAuthentication] Token is valid. Authenticating user.', ['user_id' => $accessToken->tokenable_id]);
-                // Manually authenticate the user for this request
-                Auth::login($accessToken->tokenable);
-            } else {
-                Log::warning('[ForceApiAuthentication] Bearer token provided was invalid.');
-            }
+        if ($accessToken) {
+            Log::info('[ForceApiAuthentication] Token is valid. Authenticating user.', ['user_id' => $accessToken->tokenable_id]);
+            // Manually authenticate the user for this request
+            Auth::login($accessToken->tokenable);
         } else {
-            Log::info('[ForceApiAuthentication] No bearer token found in request.');
+            Log::warning('[ForceApiAuthentication] Bearer token provided was invalid.');
+            return response()->json(['message' => 'Invalid API token.'], 401);
         }
-
-        return $next($request);
+    } else {
+        Log::info('[ForceApiAuthentication] No bearer token found in request.');
+        return response()->json(['message' => 'Authentication token required.'], 401);
     }
+
+    return $next($request);
+}
 }

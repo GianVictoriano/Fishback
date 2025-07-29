@@ -16,6 +16,7 @@ use App\Http\Controllers\TopicController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReviewImageController;
 
 /*
 |--------------------------------------------------------------------------
@@ -60,6 +61,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/plagiarism-scans', [PlagController::class, 'submitScan']);
     Route::get('/plagiarism-scans/{scanId}', [PlagController::class, 'checkStatus']);
 
+    Route::post('/review-images', [ReviewImageController::class, 'store']);
+    Route::patch('/review-images/{id}/approve', [ReviewImageController::class, 'approve']);
+    Route::patch('/review-images/{id}/reject', [ReviewImageController::class, 'reject']);
+    Route::get('/review-images/{id}', [ReviewImageController::class, 'show']);
+    Route::get('/review-images', [ReviewImageController::class, 'index']);
+    
     // Review Content
     Route::get('/review-content', [ReviewContentController::class, 'index']);
     Route::post('/review-content', [ReviewContentController::class, 'store']);

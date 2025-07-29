@@ -28,7 +28,7 @@ class PlagController extends Controller
     public function submitScan(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:txt|max:2048',
+            'file' => 'required|file|mimes:txt,pdf,doc,docx,rtf,ppt,pptx,xls,xlsx|max:51200',
         ]); // url upload removed, only file allowed
 
         $user = Auth::user();
@@ -42,7 +42,36 @@ class PlagController extends Controller
 
         try {
             $file = $request->file('file');
-            $text = file_get_contents($file->getRealPath());
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'pdf') {
+                // PDF extraction
+                try {
+                    $parser = new \Smalot\PdfParser\Parser();
+                    $pdf = $parser->parseFile($file->getRealPath());
+                    $text = $pdf->getText();
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Failed to extract text from PDF: ' . $e->getMessage()], 400);
+                }
+            } elseif (in_array($ext, ['doc', 'docx'])) {
+                // DOC/DOCX extraction
+                try {
+                    $phpWord = \PhpOffice\PhpWord\IOFactory::load($file->getRealPath());
+                    $text = '';
+                    foreach ($phpWord->getSections() as $section) {
+                        $elements = $section->getElements();
+                        foreach ($elements as $element) {
+                            if (method_exists($element, 'getText')) {
+                                $text .= $element->getText() . "\n";
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Failed to extract text from DOC/DOCX: ' . $e->getMessage()], 400);
+                }
+            } else {
+                // Default: treat as plain text
+                $text = file_get_contents($file->getRealPath());
+            }
             if (mb_strlen($text) < 100) {
                 return response()->json(['error' => 'Text must be at least 100 characters for Winston MCP.'], 400);
             }

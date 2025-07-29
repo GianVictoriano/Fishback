@@ -20,7 +20,7 @@ class ReviewContentController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'file' => 'required|file|mimes:txt|max:2048',
+                'file' => 'required|file|mimes:txt,pdf,doc,docx,rtf,ppt,pptx,xls,xlsx|max:51200',
                 'group_id' => 'required|integer|exists:group_chats,id',
                 'user_id' => 'required|integer|exists:users,id',
                 'status' => 'sometimes|string',
@@ -42,7 +42,16 @@ class ReviewContentController extends Controller
                 'uploaded_at' => now(),
             ]);
 
-            return response()->json($reviewContent, 201);
+            // Post system message to group chat (draft/sent)
+        \App\Models\ChatMessage::create([
+            'user_id' => null,
+            'message' => 'File "' . basename($reviewContent->file) . '" was uploaded by ' . (auth()->user() ? auth()->user()->name : 'a user') . ' and is awaiting review.',
+            'group_chat_id' => $reviewContent->group_id,
+            'system' => true,
+            'type' => 'sent',
+        ]);
+
+        return response()->json($reviewContent, 201);
 
         } catch (Exception $e) {
             Log::error('Failed to create review content: ' . $e->getMessage());
@@ -78,7 +87,7 @@ class ReviewContentController extends Controller
                 $query->where('status', $request->status);
             }
 
-            $reviewContents = $query->with('user:id,name')->orderByDesc('uploaded_at')->get();
+            $reviewContents = $query->with(['user:id,name', 'group:id,name'])->orderByDesc('uploaded_at')->get();
 
             return response()->json($reviewContents);
 
@@ -104,6 +113,16 @@ class ReviewContentController extends Controller
             $reviewContent->status = 'approved';
             $reviewContent->no_of_approval += 1;
             $reviewContent->save();
+
+            // Post system message to group chat
+            \App\Models\ChatMessage::create([
+                'user_id' => null,
+                'message' => 'The draft was approved by ' . (auth()->user() ? auth()->user()->name : 'a reviewer') . '.',
+                'group_chat_id' => $reviewContent->group_id,
+                'system' => true,
+                'type' => 'approve',
+            ]);
+
             return response()->json($reviewContent);
         } catch (Exception $e) {
             Log::error("Failed to approve review content for id {$id}: " . $e->getMessage());
@@ -123,11 +142,75 @@ class ReviewContentController extends Controller
             $reviewContent = ReviewContent::findOrFail($id);
             $reviewContent->status = 'rejected';
             $reviewContent->save();
+
+            // Post system message to group chat
+            \App\Models\ChatMessage::create([
+                'user_id' => null,
+                'message' => 'The draft was rejected by ' . (auth()->user() ? auth()->user()->name : 'a reviewer') . '.',
+                'group_chat_id' => $reviewContent->group_id,
+                'system' => true,
+                'type' => 'reject',
+            ]);
+
             return response()->json($reviewContent);
         } catch (Exception $e) {
             Log::error("Failed to reject review content for id {$id}: " . $e->getMessage());
             return response()->json(['message' => 'Failed to reject content.'], 500);
         }
     }
+
+    /**
+     * Preview the extracted text content of a review file (txt/pdf/doc/docx).
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function previewText($id)
+    {
+        try {
+            $review = ReviewContent::findOrFail($id);
+            $filePath = storage_path('app/public/' . $review->file);
+            if (!file_exists($filePath)) {
+                return response()->json(['error' => 'File not found.'], 404);
+            }
+            $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+            if ($ext === 'txt') {
+                $text = file_get_contents($filePath);
+            } elseif ($ext === 'pdf') {
+                try {
+                    $parser = new \Smalot\PdfParser\Parser();
+                    $pdf = $parser->parseFile($filePath);
+                    $text = $pdf->getText();
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Failed to extract text from PDF: ' . $e->getMessage()], 400);
+                }
+            } elseif (in_array($ext, ['doc', 'docx'])) {
+                try {
+                    $phpWord = \PhpOffice\PhpWord\IOFactory::load($filePath);
+                    $text = '';
+                    foreach ($phpWord->getSections() as $section) {
+                        $elements = $section->getElements();
+                        foreach ($elements as $element) {
+                            if (method_exists($element, 'getText')) {
+                                $text .= $element->getText() . "\n";
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Failed to extract text from DOC/DOCX: ' . $e->getMessage()], 400);
+                }
+            } else {
+                return response()->json(['error' => 'Preview not supported for this file type.'], 415);
+            }
+            return response()->json(['text' => $text]);
+        } catch (Exception $e) {
+            return response()->json(['error' => 'Failed to preview file: ' . $e->getMessage()], 500);
+        }
+    }
+    public function preview($id)
+{
+    return $this->previewText($id);
 }
+}
+
 

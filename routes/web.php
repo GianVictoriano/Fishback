@@ -4,22 +4,29 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\ReplyController;
+use App\Http\Controllers\ReviewContentController;
+use App\Http\Controllers\ReviewImageController;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 Route::get('/files/review_uploads/{filename}', function ($filename, Request $request) {
-    $path = 'public/review_uploads/' . $filename;
-    if (!Storage::exists($path)) {
-        abort(404);
+    $fullPath = storage_path('app/public/review_uploads/' . $filename);
+    if (!file_exists($fullPath)) {
+        return response("File not found: $fullPath", 404);
     }
-    $content = Storage::get($path);
-    $mime = Storage::mimeType($path);
+    $content = file_get_contents($fullPath);
+    $mime = mime_content_type($fullPath);
 
     return response($content, 200)
         ->header('Content-Type', $mime)
         ->header('Access-Control-Allow-Origin', '*');
 })->where('filename', '.*');
+
+
+
+// Review Images
+
 
 // Tahanan at Tungkol
 Route::get('/home', [PageController::class, 'home'])->name('home');
