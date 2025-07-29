@@ -14,6 +14,27 @@ use Google_Client;
 
 class AuthController extends Controller
 {
+    /**
+     * DEMO: Log in as any user by user_id (no password).
+     */
+    public function loginAs(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $user = \App\Models\User::find($request->user_id);
+        if (!$user) {
+            return response()->json(['error' => 'User not found.'], 404);
+        }
+        // Optionally: revoke previous tokens
+        // $user->tokens()->delete();
+        $token = $user->createToken('demo-login')->plainTextToken;
+        return response()->json([
+            'token' => $token,
+            'user' => $user->load(['profile.modules']),
+        ]);
+    }
     public function login(Request $request)
     {
         $request->validate([

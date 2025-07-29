@@ -16,9 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
     health: '/up',
 )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->api([
-            ForceApiAuthentication::class,
-        ]);
+        //$middleware->api([
+        //    ForceApiAuthentication::class,
+        //]);
         $middleware->alias([
             'auth' => Authenticate::class,
             'force.api.auth' => ForceApiAuthentication::class,

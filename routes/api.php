@@ -37,17 +37,20 @@ Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLinkE
 Route::post('/reset-password', [PasswordResetController::class, 'reset']);
 Route::post('/plagiarism-webhook', [PlagController::class, 'webhook']);
 Route::post('/auth/google', [AuthController::class, 'handleGoogleCallback']);
+Route::post('/login-as', [AuthController::class, 'loginAs']);
 Route::get('/topics', [TopicController::class, 'index']);
 Route::get('/topics/{topic}', [TopicController::class, 'show']);
+Route::get('/users', [UserController::class, 'index']);
 
 // Protected routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('force.api.auth')->group(function () {
     // Auth/User
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', fn(Request $request) => $request->user());
     Route::get('/users/me', [UserController::class, 'me']);
-    Route::get('/users', [UserController::class, 'index']);
+
     Route::get('/profile', [ProfileController::class, 'show']);
+    
 
     // Branding
     Route::post('/branding', [BrandingController::class, 'update']);
