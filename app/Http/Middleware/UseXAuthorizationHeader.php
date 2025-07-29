@@ -45,6 +45,11 @@ class UseXAuthorizationHeader
                 'api/forgot-password',
                 'api/reset-password',
                 'api/topics',
+                'api/signin',
+                'api/signup',
+                'api/branding',
+                'api/users',
+                'api/group-chats',
             ];
             // allow /api/topics/* (topic show)
             if (preg_match('#^api/topics/\\d+$#', $request->path())) {
