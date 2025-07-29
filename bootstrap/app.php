@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'auth' => Authenticate::class,
+            'force.api.auth' => ForceApiAuthentication::class,
         ]);
         $middleware->api([
             EnsureFrontendRequestsAreStateful::class,
@@ -30,5 +31,5 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+
     })->create();

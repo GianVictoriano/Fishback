@@ -37,6 +37,7 @@ class UseXAuthorizationHeader
 
         // If still no Authorization header, decide if this route is public
         if (!$request->hasHeader('Authorization') || empty(trim($request->header('Authorization')))) {
+            \Log::info('[UseXAuthorizationHeader] Path: ' . $request->path());
             $publicPaths = [
                 'api/login',
                 'api/auth/google',
@@ -46,7 +47,7 @@ class UseXAuthorizationHeader
                 'api/topics',
             ];
             // allow /api/topics/* (topic show)
-            if (preg_match('#^api/topics/\d+$#', $request->path())) {
+            if (preg_match('#^api/topics/\\d+$#', $request->path())) {
                 return $next($request);
             }
             if (!in_array($request->path(), $publicPaths)) {
