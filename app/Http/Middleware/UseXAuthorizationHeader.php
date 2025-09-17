@@ -15,7 +15,7 @@ class UseXAuthorizationHeader
     {
         // OPTIONS pass-through for CORS
         if ($request->isMethod('OPTIONS')) {
-            return $next($request);
+            return response('OK', 200, ['Access-Control-Allow-Origin' => '*', 'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS', 'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With']);
         }
 
         // If Authorization exists ensure Bearer format
@@ -49,7 +49,6 @@ class UseXAuthorizationHeader
                 'api/signup',
                 'api/branding',
                 'api/users',
-                'api/group-chats',
             ];
             // allow /api/topics/* (topic show)
             if (preg_match('#^api/topics/\\d+$#', $request->path())) {

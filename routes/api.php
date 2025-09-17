@@ -37,6 +37,7 @@ Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLinkE
 Route::post('/reset-password', [PasswordResetController::class, 'reset']);
 Route::post('/plagiarism-webhook', [PlagController::class, 'webhook']);
 Route::post('/auth/google', [AuthController::class, 'handleGoogleCallback']);
+Route::post('/google/access-token', [\App\Http\Controllers\GoogleController::class, 'getAccessToken']);
 Route::post('/login-as', [AuthController::class, 'loginAs']);
 Route::get('/topics', [TopicController::class, 'index']);
 Route::get('/topics/{topic}', [TopicController::class, 'show']);
@@ -82,6 +83,9 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/collaborators', [ModuleController::class, 'getCollaborators']);
     Route::patch('/collaborators/{profile}', [ModuleController::class, 'updatePosition']);
     Route::post('/collaborators/{profile}/modules', [ModuleController::class, 'updateCollaboratorModules']);
+
+    // Google Docs
+    Route::post('/google/create-doc', [\App\Http\Controllers\GoogleController::class, 'createDoc']);
 
     // Scrum Board
     Route::post('/scrum-boards', [ScrumBoardController::class, 'store']);

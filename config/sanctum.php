@@ -16,10 +16,11 @@ return [
     */
 
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
-        '%s,%s,%s',
+        '%s,%s,%s,%s',
         'localhost:8000',
         '127.0.0.1:8000',
-        '192.168.250.65'
+        '172.20.10.2:8000',
+        '192.168.254.114:8000'
     ))),
 
 
