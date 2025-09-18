@@ -17,6 +17,7 @@ use App\Http\Controllers\CommentController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReviewImageController;
+use App\Http\Controllers\Api\ArticleController;
 
 /*
 |--------------------------------------------------------------------------
@@ -42,6 +43,8 @@ Route::post('/login-as', [AuthController::class, 'loginAs']);
 Route::get('/topics', [TopicController::class, 'index']);
 Route::get('/topics/{topic}', [TopicController::class, 'show']);
 Route::get('/users', [UserController::class, 'index']);
+Route::get('/public/articles', [ArticleController::class, 'publicArticles']);
+Route::get('/public/articles/{article}', [ArticleController::class, 'show']);
 
 // Protected routes
 Route::middleware('force.api.auth')->group(function () {
@@ -52,6 +55,10 @@ Route::middleware('force.api.auth')->group(function () {
 
     Route::get('/profile', [ProfileController::class, 'show']);
     
+    // Articles - Moved to the top to ensure they're protected
+    Route::apiResource('articles', ArticleController::class)->except(['index', 'show']);
+    Route::get('/articles', [ArticleController::class, 'index']);
+    Route::get('/articles/{article}', [ArticleController::class, 'show']);
 
     // Branding
     Route::post('/branding', [BrandingController::class, 'update']);
