@@ -18,6 +18,7 @@ use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReviewImageController;
 use App\Http\Controllers\Api\ArticleController;
+use App\Http\Controllers\Api\ContributionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,8 +41,28 @@ Route::post('/plagiarism-webhook', [PlagController::class, 'webhook']);
 Route::post('/auth/google', [AuthController::class, 'handleGoogleCallback']);
 Route::post('/google/access-token', [\App\Http\Controllers\GoogleController::class, 'getAccessToken']);
 Route::post('/login-as', [AuthController::class, 'loginAs']);
+// Public topic routes
 Route::get('/topics', [TopicController::class, 'index']);
 Route::get('/topics/{topic}', [TopicController::class, 'show']);
+
+// Contributions
+Route::middleware('force.api.auth')->group(function () {
+    Route::apiResource('contributions', ContributionController::class)->only(['index', 'store', 'show']);
+    Route::post('contributions/{contribution}/status', [ContributionController::class, 'updateStatus']);
+});
+
+// Protected topic and comment routes
+Route::middleware('force.api.auth')->group(function () {
+    // Topic routes
+    Route::post('/topics', [TopicController::class, 'store']);
+    Route::post('/topics/{topic}/report', [TopicController::class, 'report']);
+    Route::delete('/topics/{topic}', [TopicController::class, 'delete']);
+    
+    // Comment routes
+    Route::post('/topics/{topic}/comments', [CommentController::class, 'store']);
+    Route::post('/comments/{comment}/report', [CommentController::class, 'report']);
+    Route::delete('/comments/{comment}', [CommentController::class, 'delete']);
+});
 Route::get('/users', [UserController::class, 'index']);
 Route::get('/public/articles', [ArticleController::class, 'publicArticles']);
 Route::get('/public/articles/{article}', [ArticleController::class, 'show']);

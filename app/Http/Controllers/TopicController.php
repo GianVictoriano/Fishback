@@ -23,6 +23,7 @@ class TopicController extends Controller
             'title' => 'required|string|max:255',
             'body' => 'nullable|string',
             'category' => 'required|string|max:50',
+            'secret' => 'required|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -34,9 +35,23 @@ class TopicController extends Controller
             'title'   => $request->title,
             'body'    => $request->body,
             'category' => $request->category,
+            'secret'  => $request->secret,
+            'status'  => Topic::STATUS_ACTIVE,
         ]);
 
         return response()->json($topic, 201);
+    }
+
+    public function report(Topic $topic)
+    {
+        $topic->update(['status' => Topic::STATUS_REPORTED]);
+        return response()->json(['message' => 'Topic has been reported']);
+    }
+
+    public function delete(Topic $topic)
+    {
+        $topic->update(['status' => Topic::STATUS_DELETED]);
+        return response()->json(['message' => 'Topic has been deleted']);
     }
 
     // GET /api/topics/{topic}

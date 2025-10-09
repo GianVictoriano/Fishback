@@ -9,10 +9,20 @@ class Comment extends Model
 {
     use HasFactory;
 
+    const STATUS_ACTIVE = 'active';
+    const STATUS_REPORTED = 'reported';
+    const STATUS_DELETED = 'deleted';
+
     protected $fillable = [
         'topic_id',
         'user_id',
         'body',
+        'secret',
+        'status',
+    ];
+
+    protected $attributes = [
+        'status' => self::STATUS_ACTIVE,
     ];
 
     public function topic()

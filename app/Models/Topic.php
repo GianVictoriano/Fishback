@@ -9,11 +9,21 @@ class Topic extends Model
 {
     use HasFactory;
 
+    const STATUS_ACTIVE = 'active';
+    const STATUS_REPORTED = 'reported';
+    const STATUS_DELETED = 'deleted';
+
     protected $fillable = [
         'user_id',
         'title',
         'body',
         'category',
+        'secret',
+        'status',
+    ];
+
+    protected $attributes = [
+        'status' => self::STATUS_ACTIVE,
     ];
 
     public function user()
