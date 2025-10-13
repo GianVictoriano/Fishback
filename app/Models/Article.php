@@ -8,6 +8,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Article extends Model
 {
+    public function metrics()
+    {
+        return $this->hasOne(ArticleMetric::class);
+    }
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
@@ -31,5 +35,10 @@ class Article extends Model
     public function media()
     {
         return $this->hasMany(ArticleMedia::class);
+    }
+
+    public function reactions()
+    {
+        return $this->hasMany(ArticleReaction::class);
     }
 }

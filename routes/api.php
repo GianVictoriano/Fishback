@@ -19,6 +19,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReviewImageController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\ContributionController;
+use App\Http\Controllers\Api\ApplicantController;
 
 /*
 |--------------------------------------------------------------------------
@@ -41,6 +42,10 @@ Route::post('/plagiarism-webhook', [PlagController::class, 'webhook']);
 Route::post('/auth/google', [AuthController::class, 'handleGoogleCallback']);
 Route::post('/google/access-token', [\App\Http\Controllers\GoogleController::class, 'getAccessToken']);
 Route::post('/login-as', [AuthController::class, 'loginAs']);
+
+// Public application submission
+Route::post('/applications', [ApplicantController::class, 'store']);
+
 // Public topic routes
 Route::get('/topics', [TopicController::class, 'index']);
 Route::get('/topics/{topic}', [TopicController::class, 'show']);
@@ -65,7 +70,10 @@ Route::middleware('force.api.auth')->group(function () {
 });
 Route::get('/users', [UserController::class, 'index']);
 Route::get('/public/articles', [ArticleController::class, 'publicArticles']);
+Route::get('/public/trending-articles', [ArticleController::class, 'trendingArticles']);
 Route::get('/public/articles/{article}', [ArticleController::class, 'show']);
+Route::post('/public/articles/{article}/react', [ArticleController::class, 'react']);
+Route::post('/public/articles/{article}/visit', [ArticleController::class, 'visit']);
 
 // Protected routes
 Route::middleware('force.api.auth')->group(function () {
@@ -73,6 +81,14 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', fn(Request $request) => $request->user());
     Route::get('/users/me', [UserController::class, 'me']);
+    
+    // Application management (admin only)
+    // Route::post('/applications', [ApplicantController::class, 'store']); // Moved to public routes
+    Route::get('/applications', [\App\Http\Controllers\Api\ApplicantController::class, 'index']);
+    Route::get('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'show']);
+    Route::put('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'update']);
+    Route::delete('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'destroy']);
+
 
     Route::get('/profile', [ProfileController::class, 'show']);
     

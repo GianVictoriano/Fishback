@@ -20,32 +20,57 @@ class ContributionController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'content' => 'required|string',
-            'category' => 'required|in:artwork,literature,story,coverage',
-            'files.*' => 'file|max:5120', // 5MB max per file
+            'category' => 'required|in:artwork,fiction,poetry,essay,story,coverage',
+            'files' => $request->category === 'artwork' ? 'required|array|min:1' : 'nullable|array',
+            'files.*' => 'file|max:5120', // 5MB per file
         ]);
 
-        // Create the contribution
-        $contribution = new Contribution([
+        // Prepare base data
+        $data = [
             'user_id' => auth()->id(),
-            'title' => $validated['title'],
-            'content' => $validated['content'],
+            'title'    => $validated['title'],
             'category' => $validated['category'],
-            'status' => 'pending',
-        ]);
+            'status'   => 'pending',
+        ];
 
-        $contribution->save();
+        // Handle according to category/type
+        if ($validated['category'] === 'artwork') {
+            // For artwork, we'll store the content as a description
+            $data['content'] = $validated['content'] ?: 'Artwork submission';
+            $data['content_file_path'] = null;
+        } else {
+            // For text-based submissions, store content in a file and keep a reference
+            $txtFileName = Str::slug($validated['title']) . '-' . time() . '.txt';
+            $contentPath = 'contributions/text/' . $txtFileName;
+            Storage::disk('public')->put($contentPath, $validated['content']);
+            $data['content'] = $validated['content']; // Store content in the database
+            $data['content_file_path'] = $contentPath; // Also store file path for reference
+        }
+
+        $contribution = Contribution::create($data);
 
         // Handle file uploads
         if ($request->hasFile('files')) {
+            $uploadedFiles = [];
+            
             foreach ($request->file('files') as $file) {
                 $path = $file->store('contributions/' . $contribution->id, 'public');
-                
-                $contribution->media()->create([
+                $uploadedFiles[] = [
                     'file_path' => $path,
                     'file_name' => $file->getClientOriginalName(),
                     'file_type' => $file->getMimeType(),
-                    'file_size' => $file->getSize(),
-                ]);
+                    'size'      => $file->getSize(),
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ];
+            }
+            
+            // Save all files to the database
+            $contribution->media()->insert($uploadedFiles);
+            
+            // If artwork, save the first file as the main file
+            if ($validated['category'] === 'artwork' && !empty($uploadedFiles)) {
+                $contribution->update(['file_path' => $uploadedFiles[0]['file_path']]);
             }
         }
 
@@ -57,15 +82,10 @@ class ContributionController extends Controller
 
     public function index(Request $request)
     {
-        $user = $request->user();
-        $query = Contribution::with('media');
-        
-        if (!$user->isAdmin()) {
-            $query->where('user_id', $user->id);
-        }
-
-        $contributions = $query->latest()->paginate(10);
-        
+        $contributions = Contribution::with('media')
+            ->latest()
+            ->paginate(10);
+            
         return response()->json($contributions);
     }
 

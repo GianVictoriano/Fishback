@@ -13,6 +13,8 @@ class Contribution extends Model
         'title',
         'content',
         'category',
+        'file_path',
+        'content_file_path',
         'status',
         'admin_notes',
     ];
