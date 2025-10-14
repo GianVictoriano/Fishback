@@ -41,4 +41,9 @@ class Article extends Model
     {
         return $this->hasMany(ArticleReaction::class);
     }
+
+    public function preferences()
+    {
+        return $this->hasMany(UserPreference::class);
+    }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreArticleRequest;
 use App\Http\Resources\ArticleResource;
 use App\Models\Article;
+use App\Services\RecommendationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -174,6 +175,63 @@ class ArticleController extends Controller
         }
 
         return response()->json(['visits' => $metrics->visits]);
+    }
+
+    /**
+     * Get personalized recommendations for the user
+     */
+    public function recommendations(Request $request)
+    {
+        try {
+            $userId = $request->user() ? $request->user()->id : null;
+            $limit = $request->input('limit', 5);
+            
+            $recommendationEngine = new RecommendationEngine();
+            $recommendations = $recommendationEngine->getRecommendations($userId, $limit);
+            
+            return ArticleResource::collection($recommendations);
+        } catch (\Exception $e) {
+            Log::error('Error getting recommendations: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to get recommendations'], 500);
+        }
+    }
+
+    /**
+     * Record user interaction for ML learning
+     */
+    public function recordInteraction(Request $request, Article $article)
+    {
+        try {
+            $validated = $request->validate([
+                'interaction_type' => 'required|in:view,like,heart,sad,wow,time_spent,scroll',
+                'time_spent' => 'nullable|integer|min:0',
+                'scroll_percentage' => 'nullable|numeric|min:0|max:100',
+                'session_id' => 'nullable|string',
+            ]);
+
+            $userId = $request->user() ? $request->user()->id : null;
+            
+            if (!$userId) {
+                return response()->json(['message' => 'User authentication required'], 401);
+            }
+
+            $recommendationEngine = new RecommendationEngine();
+            $recommendationEngine->recordInteraction(
+                $userId,
+                $article->id,
+                $validated['interaction_type'],
+                [
+                    'time_spent' => $validated['time_spent'] ?? 0,
+                    'scroll_percentage' => $validated['scroll_percentage'] ?? 0,
+                    'session_id' => $validated['session_id'] ?? null,
+                ]
+            );
+
+            return response()->json(['message' => 'Interaction recorded successfully']);
+        } catch (\Exception $e) {
+            Log::error('Error recording interaction: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to record interaction'], 500);
+        }
     }
 
     protected function handleMediaUploads($files, Article $article)

@@ -74,6 +74,7 @@ Route::get('/public/trending-articles', [ArticleController::class, 'trendingArti
 Route::get('/public/articles/{article}', [ArticleController::class, 'show']);
 Route::post('/public/articles/{article}/react', [ArticleController::class, 'react']);
 Route::post('/public/articles/{article}/visit', [ArticleController::class, 'visit']);
+Route::get('/public/recommendations', [ArticleController::class, 'recommendations']);
 
 // Protected routes
 Route::middleware('force.api.auth')->group(function () {
@@ -96,6 +97,10 @@ Route::middleware('force.api.auth')->group(function () {
     Route::apiResource('articles', ArticleController::class)->except(['index', 'show']);
     Route::get('/articles', [ArticleController::class, 'index']);
     Route::get('/articles/{article}', [ArticleController::class, 'show']);
+    
+    // ML Recommendations and Interaction Tracking
+    Route::get('/recommendations', [ArticleController::class, 'recommendations']);
+    Route::post('/articles/{article}/interaction', [ArticleController::class, 'recordInteraction']);
 
     // Branding
     Route::post('/branding', [BrandingController::class, 'update']);
