@@ -18,6 +18,13 @@ class ReviewImage extends Model
         'status',
         'no_of_approval',
         'uploaded_at',
+        'is_folio_submission',
+        'folio_id',
+    ];
+
+    protected $casts = [
+        'is_folio_submission' => 'boolean',
+        'uploaded_at' => 'datetime',
     ];
 
     public function user()

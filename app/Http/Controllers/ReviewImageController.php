@@ -33,6 +33,8 @@ class ReviewImageController extends Controller
             'status' => 'pending',
             'no_of_approval' => 0,
             'uploaded_at' => now(),
+            'is_folio_submission' => $request->input('is_folio_submission', false),
+            'folio_id' => $request->input('folio_id'),
         ]);
         // Post system message to group chat
         ChatMessage::create([
@@ -140,6 +142,13 @@ class ReviewImageController extends Controller
         if ($request->has('current_reviewer_id')) {
             $query->where('current_reviewer_id', $request->current_reviewer_id);
         }
+        
+        // Exclude folio submissions - they should only appear in manage folio
+        $query->where(function($q) {
+            $q->where('is_folio_submission', false)
+              ->orWhereNull('is_folio_submission');
+        });
+        
         $images = $query->with(['user:id,name', 'group:id,name,status'])->orderByDesc('uploaded_at')->get();
         return response()->json($images);
     }

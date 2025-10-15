@@ -29,4 +29,12 @@ class GroupChat extends Model
     {
         return $this->belongsToMany(User::class, 'group_chat_members', 'group_chat_id', 'user_id');
     }
+
+    /**
+     * Get the folio associated with this group chat.
+     */
+    public function folio()
+    {
+        return $this->hasOne(Folio::class, 'group_chat_id');
+    }
 }

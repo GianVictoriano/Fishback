@@ -27,7 +27,11 @@ class GroupChatController extends Controller
     public function index()
     {
         $user = Auth::user();
+        // Temporarily load folio separately to avoid eager loading issues
         $chats = $user->groupChats()->with('scrumBoard')->get();
+        
+        // Load folio relationship for each chat
+        $chats->load('folio');
 
         return response()->json($chats);
     }

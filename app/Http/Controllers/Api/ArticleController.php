@@ -10,7 +10,9 @@ use App\Services\RecommendationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class ArticleController extends Controller
 {
@@ -48,6 +50,7 @@ class ArticleController extends Controller
                 'genre' => 'required|in:articles,opinions,sports,editorial,artworks',
                 'media' => 'nullable|array',
                 'media.*' => 'file|mimes:jpg,jpeg,png,gif,pdf,doc,docx|max:10240',
+                'post_to_facebook' => 'nullable|boolean',
             ]);
 
             $article = Article::create([
@@ -61,6 +64,16 @@ class ArticleController extends Controller
 
             if ($request->hasFile('media')) {
                 $this->handleMediaUploads($request->file('media'), $article);
+            }
+
+            // Post to Facebook if requested
+            if ($request->input('post_to_facebook', false)) {
+                try {
+                    $this->postToFacebook($article);
+                } catch (\Exception $e) {
+                    Log::error('Failed to post article to Facebook: ' . $e->getMessage());
+                    // Continue even if Facebook posting fails
+                }
             }
 
             return new ArticleResource($article->load('media'));
@@ -282,5 +295,59 @@ class ArticleController extends Controller
                 continue;
             }
         }
+    }
+
+    protected function postToFacebook(Article $article)
+    {
+        $pageAccessToken = env('FB_PAGE_ACCESS_TOKEN');
+        $pageId = env('FB_PAGE_ID');
+        
+        if (!$pageAccessToken || !$pageId) {
+            Log::warning('Facebook credentials not configured');
+            return;
+        }
+
+        // Strip HTML tags from content and create a summary
+        $plainContent = strip_tags($article->content);
+        $summary = strlen($plainContent) > 300 
+            ? substr($plainContent, 0, 297) . '...' 
+            : $plainContent;
+        
+        // Create the Facebook post message
+        $message = $article->title . "\n\n" . $summary;
+
+        // Check if article has media
+        $firstMedia = $article->media()->first();
+        
+        if ($firstMedia && in_array($firstMedia->mime_type, ['image/jpeg', 'image/png', 'image/jpg', 'image/gif'])) {
+            // Post with image
+            $imagePath = Storage::disk('public')->path($firstMedia->file_path);
+            
+            if (file_exists($imagePath)) {
+                Http::attach('source', file_get_contents($imagePath), basename($imagePath))
+                    ->post("https://graph.facebook.com/{$pageId}/photos", [
+                        'message' => $message,
+                        'access_token' => $pageAccessToken,
+                    ]);
+                
+                Log::info('Article posted to Facebook with image', ['article_id' => $article->id]);
+            } else {
+                // Fallback to text-only if image file not found
+                $this->postTextToFacebook($pageId, $pageAccessToken, $message, $article->id);
+            }
+        } else {
+            // Post text only
+            $this->postTextToFacebook($pageId, $pageAccessToken, $message, $article->id);
+        }
+    }
+
+    protected function postTextToFacebook($pageId, $accessToken, $message, $articleId)
+    {
+        Http::post("https://graph.facebook.com/{$pageId}/feed", [
+            'message' => $message,
+            'access_token' => $accessToken,
+        ]);
+        
+        Log::info('Article posted to Facebook as text', ['article_id' => $articleId]);
     }
 }

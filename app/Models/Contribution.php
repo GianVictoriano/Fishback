@@ -17,11 +17,15 @@ class Contribution extends Model
         'content_file_path',
         'status',
         'admin_notes',
+        'event_date',
+        'event_location',
+        'num_journalists',
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'event_date' => 'datetime',
     ];
 
     public function user(): BelongsTo

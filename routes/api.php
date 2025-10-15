@@ -21,6 +21,10 @@ use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\ContributionController;
 use App\Http\Controllers\Api\ApplicantController;
 use App\Http\Controllers\ArticleBookmarkController;
+use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\Api\ApplicationPeriodController;
+use App\Http\Controllers\Api\FolioController;
+use App\Http\Controllers\Api\CoverageRequestController;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,6 +50,10 @@ Route::post('/login-as', [AuthController::class, 'loginAs']);
 
 // Public application submission
 Route::post('/applications', [ApplicantController::class, 'store']);
+
+// Public application period check
+Route::get('/application-period', [ApplicationPeriodController::class, 'index']);
+Route::get('/application-period/status', [ApplicationPeriodController::class, 'checkStatus']);
 
 // Public topic routes
 Route::get('/topics', [TopicController::class, 'index']);
@@ -94,6 +102,12 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/applications/{id}/accept', [\App\Http\Controllers\Api\ApplicantController::class, 'accept']);
     Route::delete('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'destroy']);
 
+    // Application period management (admin only)
+    Route::post('/application-period', [ApplicationPeriodController::class, 'store']);
+    Route::delete('/application-period/{id}', [ApplicationPeriodController::class, 'destroy']);
+
+    // Email sending
+    Route::post('/send-email', [\App\Http\Controllers\Api\EmailController::class, 'sendEmail']);
 
     Route::get('/profile', [ProfileController::class, 'show']);
     Route::put('/profile', [ProfileController::class, 'update']);
@@ -157,12 +171,46 @@ Route::middleware('force.api.auth')->group(function () {
     // Scrum Board
     Route::post('/scrum-boards', [ScrumBoardController::class, 'store']);
 
+    // Activities
+    Route::get('/activities', [ActivityController::class, 'index']);
+    Route::post('/activities', [ActivityController::class, 'store']);
+    Route::get('/activities/{activity}', [ActivityController::class, 'show']);
+    Route::put('/activities/{activity}', [ActivityController::class, 'update']);
+    Route::delete('/activities/{activity}', [ActivityController::class, 'destroy']);
+    Route::post('/activities/{activity}/member-status', [ActivityController::class, 'updateMemberStatus']);
+    Route::post('/activities/{activity}/members', [ActivityController::class, 'addMember']);
+    Route::delete('/activities/{activity}/members/{user}', [ActivityController::class, 'removeMember']);
+
     // Forum Topics & Comments
     Route::post('/topics', [TopicController::class, 'store']);
     Route::post('/topics/{topic}/comments', [CommentController::class, 'store']);
 
     // Posts
     Route::post('/posts', [PostController::class, 'store']);
+
+    // Folios (Literary Folios)
+    Route::get('/folios', [FolioController::class, 'index']);
+    Route::post('/folios', [FolioController::class, 'store']);
+    Route::get('/folios/{id}', [FolioController::class, 'show']);
+    Route::put('/folios/{id}', [FolioController::class, 'update']);
+    Route::delete('/folios/{id}', [FolioController::class, 'destroy']);
+    
+    // Folio submissions
+    Route::post('/folios/{id}/submit', [FolioController::class, 'submitWork']);
+    Route::get('/folios/{id}/submissions', [FolioController::class, 'getSubmissions']);
+    Route::post('/folios/{folioId}/submissions/{submissionId}/review', [FolioController::class, 'reviewSubmission']);
+    
+    // Folio members
+    Route::post('/folios/{id}/members', [FolioController::class, 'addMember']);
+    Route::delete('/folios/{id}/members/{userId}', [FolioController::class, 'removeMember']);
+
+    // Coverage Requests
+    Route::get('/coverage-requests', [CoverageRequestController::class, 'index']);
+    Route::post('/coverage-requests', [CoverageRequestController::class, 'store']);
+    Route::get('/coverage-requests/{id}', [CoverageRequestController::class, 'show']);
+    Route::post('/coverage-requests/{id}/approve', [CoverageRequestController::class, 'approve']);
+    Route::post('/coverage-requests/{id}/reject', [CoverageRequestController::class, 'reject']);
+    Route::delete('/coverage-requests/{id}', [CoverageRequestController::class, 'destroy']);
 });
 
 ?>

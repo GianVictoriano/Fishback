@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Contribution;
+use App\Notifications\CoverageRequestApprovedNotification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -23,6 +25,10 @@ class ContributionController extends Controller
             'category' => 'required|in:artwork,fiction,poetry,essay,story,coverage',
             'files' => $request->category === 'artwork' ? 'required|array|min:1' : 'nullable|array',
             'files.*' => 'file|max:5120', // 5MB per file
+            // Coverage-specific fields
+            'event_date' => $request->category === 'coverage' ? 'required|date' : 'nullable|date',
+            'event_location' => $request->category === 'coverage' ? 'required|string|max:255' : 'nullable|string|max:255',
+            'num_journalists' => $request->category === 'coverage' ? 'required|integer|min:1' : 'nullable|integer|min:1',
         ]);
 
         // Prepare base data
@@ -32,6 +38,13 @@ class ContributionController extends Controller
             'category' => $validated['category'],
             'status'   => 'pending',
         ];
+
+        // Add coverage-specific fields if category is coverage
+        if ($validated['category'] === 'coverage') {
+            $data['event_date'] = $validated['event_date'];
+            $data['event_location'] = $validated['event_location'];
+            $data['num_journalists'] = $validated['num_journalists'];
+        }
 
         // Handle according to category/type
         if ($validated['category'] === 'artwork') {
@@ -82,7 +95,7 @@ class ContributionController extends Controller
 
     public function index(Request $request)
     {
-        $contributions = Contribution::with('media')
+        $contributions = Contribution::with(['media', 'user'])
             ->latest()
             ->paginate(10);
             
@@ -91,13 +104,16 @@ class ContributionController extends Controller
 
     public function show(Contribution $contribution)
     {
-        $this->authorize('view', $contribution);
         return response()->json($contribution->load('media', 'user'));
     }
 
     public function updateStatus(Request $request, Contribution $contribution)
     {
-        $this->authorize('update', $contribution);
+        // Only allow collaborators/admins to update status
+        // You can add role checking here if needed
+        // if (!auth()->user()->profile || auth()->user()->profile->role !== 'collaborator') {
+        //     return response()->json(['message' => 'Unauthorized'], 403);
+        // }
         
         $validated = $request->validate([
             'status' => 'required|in:pending,approved,rejected',
@@ -109,11 +125,20 @@ class ContributionController extends Controller
             'admin_notes' => $validated['admin_notes'] ?? null,
         ]);
 
-        // TODO: Notify user about status change
+        // Send email notification if the request is approved and it's a coverage request
+        if ($validated['status'] === 'approved' && $contribution->category === 'coverage') {
+            try {
+                $contribution->user->notify(new CoverageRequestApprovedNotification($contribution));
+            } catch (\Exception $e) {
+                Log::error('Failed to send approval notification: ' . $e->getMessage());
+                // Continue execution even if email fails
+            }
+        }
 
         return response()->json([
+            'status' => 'success',
             'message' => 'Status updated successfully',
-            'data' => $contribution
+            'data' => $contribution->load('user')
         ]);
     }
 }

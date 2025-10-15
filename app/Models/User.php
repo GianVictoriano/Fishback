@@ -77,5 +77,23 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(GroupChat::class, 'group_chat_members', 'user_id', 'group_chat_id');
     }
+
+    /**
+     * The activities created by the user.
+     */
+    public function createdActivities()
+    {
+        return $this->hasMany(Activity::class, 'created_by');
+    }
+
+    /**
+     * The activities that the user is a member of.
+     */
+    public function activities()
+    {
+        return $this->belongsToMany(Activity::class, 'activity_members')
+            ->withPivot('status', 'notes')
+            ->withTimestamps();
+    }
 }
 

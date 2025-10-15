@@ -20,12 +20,15 @@ class ReviewContent extends Model
         'status',
         'uploaded_at',
         'no_of_approval',
+        'is_folio_submission',
+        'folio_id',
     ];
 
     public $timestamps = false;
 
     protected $casts = [
         'uploaded_at' => 'datetime',
+        'is_folio_submission' => 'boolean',
     ];
 
     public function group()
