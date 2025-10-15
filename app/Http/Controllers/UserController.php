@@ -27,4 +27,17 @@ class UserController extends Controller
             'users' => $users
         ]);
     }
+
+    /**
+     * Display a specific user's profile.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function show($id)
+    {
+        $user = User::with('profile')->findOrFail($id);
+
+        return response()->json($user);
+    }
 }

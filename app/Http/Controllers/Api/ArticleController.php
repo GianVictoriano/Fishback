@@ -79,16 +79,24 @@ class ArticleController extends Controller
         return new ArticleResource($article);
     }
 
-    public function trendingArticles()
+    public function trendingArticles(Request $request)
     {
         $threeDaysAgo = now()->subDays(3);
         $limit = 10;
+        $genre = $request->query('genre');
 
         // First, get trending articles from the last 3 days
-        $trendingArticles = Article::with(['media', 'user', 'metrics'])
+        $trendingQuery = Article::with(['media', 'user', 'metrics'])
             ->where('status', 'published')
             ->whereNotNull('published_at')
-            ->whereDate('published_at', '>=', $threeDaysAgo)
+            ->whereDate('published_at', '>=', $threeDaysAgo);
+        
+        // Apply genre filter if provided
+        if ($genre) {
+            $trendingQuery->where('genre', $genre);
+        }
+        
+        $trendingArticles = $trendingQuery
             ->leftJoin('article_metrics', 'articles.id', '=', 'article_metrics.article_id')
             ->orderByRaw('ISNULL(article_metrics.visits) ASC, article_metrics.visits DESC')
             ->select('articles.*')
@@ -100,10 +108,17 @@ class ArticleController extends Controller
             $remaining = $limit - $trendingArticles->count();
             $excludedIds = $trendingArticles->pluck('id')->toArray();
             
-            $recentArticles = Article::with(['media', 'user', 'metrics'])
+            $recentQuery = Article::with(['media', 'user', 'metrics'])
                 ->where('status', 'published')
                 ->whereNotNull('published_at')
-                ->whereNotIn('id', $excludedIds)
+                ->whereNotIn('id', $excludedIds);
+            
+            // Apply genre filter if provided
+            if ($genre) {
+                $recentQuery->where('genre', $genre);
+            }
+            
+            $recentArticles = $recentQuery
                 ->orderBy('published_at', 'desc')
                 ->limit($remaining)
                 ->get();

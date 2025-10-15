@@ -29,6 +29,7 @@ class ScrumBoardController extends Controller
             'deadline' => 'nullable|date',
             'collaborators' => 'required|array',
             'collaborators.*' => 'exists:users,id', // Ensure collaborators are valid users
+            'lead_reviewer_id' => 'required|exists:users,id', // Lead reviewer is required
         ]);
 
         try {
@@ -38,12 +39,14 @@ class ScrumBoardController extends Controller
                     'title' => $validated['title'],
                     'category' => $validated['category'],
                     'deadline' => $validated['deadline'],
+                    'lead_reviewer_id' => $validated['lead_reviewer_id'],
                     'created_by' => Auth::id(),
                 ]);
 
                 // 2. Create the associated Group Chat
                 $chat = $board->groupChat()->create([
                     'name' => $board->title,
+                    'status' => 'active',
                 ]);
 
                 // 3. Attach collaborators and the creator to the chat

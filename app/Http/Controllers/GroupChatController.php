@@ -31,5 +31,77 @@ class GroupChatController extends Controller
 
         return response()->json($chats);
     }
-    //
+
+    /**
+     * Get a specific group chat with scrum board
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function show($id)
+    {
+        try {
+            $groupChat = GroupChat::with('scrumBoard')->findOrFail($id);
+            return response()->json($groupChat);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Group chat not found.',
+                'error' => $e->getMessage()
+            ], 404);
+        }
+    }
+
+    /**
+     * Get all members of a specific group chat
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getMembers($id)
+    {
+        try {
+            $groupChat = GroupChat::findOrFail($id);
+            
+            // Get all members with their profiles
+            $members = $groupChat->members()->with('profile')->get();
+            
+            return response()->json($members);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to fetch group members.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update group chat status
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateStatus(Request $request, $id)
+    {
+        try {
+            $groupChat = GroupChat::findOrFail($id);
+            
+            $validated = $request->validate([
+                'status' => 'required|string|in:active,published,archived'
+            ]);
+            
+            $groupChat->status = $validated['status'];
+            $groupChat->save();
+            
+            return response()->json([
+                'message' => 'Group chat status updated successfully.',
+                'data' => $groupChat
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to update group chat status.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

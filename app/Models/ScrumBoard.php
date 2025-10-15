@@ -14,6 +14,7 @@ class ScrumBoard extends Model
         'title',
         'category',
         'deadline',
+        'lead_reviewer_id',
         'created_by',
     ];
 
@@ -23,6 +24,14 @@ class ScrumBoard extends Model
     public function groupChat()
     {
         return $this->hasOne(GroupChat::class);
+    }
+
+    /**
+     * Get the lead reviewer for the scrum board.
+     */
+    public function leadReviewer()
+    {
+        return $this->belongsTo(User::class, 'lead_reviewer_id');
     }
 
     /**

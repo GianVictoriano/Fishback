@@ -23,6 +23,8 @@ class ReviewContentController extends Controller
                 'file' => 'required|file|mimes:txt,pdf,doc,docx,rtf,ppt,pptx,xls,xlsx|max:51200',
                 'group_id' => 'required|integer|exists:group_chats,id',
                 'user_id' => 'required|integer|exists:users,id',
+                'current_reviewer_id' => 'nullable|integer|exists:users,id',
+                'review_stage' => 'sometimes|string|in:initial,peer_review,lead_review,approved',
                 'status' => 'sometimes|string',
                 'no_of_approval' => 'sometimes|integer',
             ]);
@@ -37,6 +39,8 @@ class ReviewContentController extends Controller
                 'file' => $path,
                 'group_id' => $request->input('group_id'),
                 'user_id' => $request->input('user_id'),
+                'current_reviewer_id' => $request->input('current_reviewer_id'),
+                'review_stage' => $request->input('review_stage', 'initial'),
                 'status' => $request->input('status', 'pending'),
                 'no_of_approval' => $request->input('no_of_approval', 0),
                 'uploaded_at' => now(),
@@ -87,6 +91,14 @@ class ReviewContentController extends Controller
                 $query->where('status', $request->status);
             }
 
+            if ($request->has('review_stage')) {
+                $query->where('review_stage', $request->review_stage);
+            }
+
+            if ($request->has('current_reviewer_id')) {
+                $query->where('current_reviewer_id', $request->current_reviewer_id);
+            }
+
             $reviewContents = $query->with(['user:id,name', 'group:id,name'])->orderByDesc('uploaded_at')->get();
 
             return response()->json($reviewContents);
@@ -127,6 +139,33 @@ class ReviewContentController extends Controller
         } catch (Exception $e) {
             Log::error("Failed to approve review content for id {$id}: " . $e->getMessage());
             return response()->json(['message' => 'Failed to approve content.'], 500);
+        }
+    }
+
+    /**
+     * Update review content (for forwarding).
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function update(Request $request, $id)
+    {
+        try {
+            $reviewContent = ReviewContent::findOrFail($id);
+            
+            $validated = $request->validate([
+                'current_reviewer_id' => 'nullable|integer|exists:users,id',
+                'review_stage' => 'nullable|string|in:initial,peer_review,lead_review,approved',
+                'status' => 'nullable|string|in:pending,approved,rejected',
+            ]);
+            
+            $reviewContent->update($validated);
+            
+            return response()->json($reviewContent);
+        } catch (Exception $e) {
+            Log::error("Failed to update review content for id {$id}: " . $e->getMessage());
+            return response()->json(['message' => 'Failed to update content.'], 500);
         }
     }
 

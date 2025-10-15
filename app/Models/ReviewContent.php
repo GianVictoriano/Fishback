@@ -15,6 +15,8 @@ class ReviewContent extends Model
         'file',
         'group_id',
         'user_id',
+        'current_reviewer_id',
+        'review_stage',
         'status',
         'uploaded_at',
         'no_of_approval',
@@ -34,5 +36,10 @@ class ReviewContent extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function currentReviewer()
+    {
+        return $this->belongsTo(User::class, 'current_reviewer_id');
     }
 }

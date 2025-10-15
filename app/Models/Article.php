@@ -21,11 +21,31 @@ class Article extends Model
         'status',
         'published_at',
         'genre',
+        'keywords',
+        'content_hash',
     ];
 
     protected $casts = [
         'published_at' => 'datetime',
     ];
+
+    /**
+     * Boot method to auto-extract keywords when article is saved
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($article) {
+            // Only update keywords if content has changed
+            $newHash = md5($article->content);
+            if ($article->content_hash !== $newHash) {
+                $keywords = \App\Services\ContentAnalyzer::extractKeywords($article->content, 30);
+                $article->keywords = json_encode($keywords);
+                $article->content_hash = $newHash;
+            }
+        });
+    }
 
     public function user()
     {

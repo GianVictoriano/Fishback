@@ -7,6 +7,7 @@ use App\Models\UserPreference;
 use App\Models\ArticleReaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
+use App\Services\ContentAnalyzer;
 
 class RecommendationEngine
 {
@@ -30,11 +31,20 @@ class RecommendationEngine
         }
 
         $userPreferences = $this->getUserPreferenceProfile($userId);
-        $contentBasedRecs = $this->getContentBasedRecommendations($userId, $userPreferences, $limit);
+        
+        // Three recommendation strategies
+        $genreBasedRecs = $this->getContentBasedRecommendations($userId, $userPreferences, $limit);
+        $contentBasedRecs = $this->getContentSimilarityRecommendations($userId, $limit);
         $collaborativeRecs = $this->getCollaborativeRecommendations($userId, $limit);
         
-        // Hybrid approach: combine content-based and collaborative filtering
-        $recommendations = $this->combineRecommendations($contentBasedRecs, $collaborativeRecs, $limit);
+        // Hybrid approach: combine all three strategies
+        // 40% genre-based, 30% content similarity, 30% collaborative
+        $recommendations = $this->combineRecommendationsAdvanced(
+            $genreBasedRecs, 
+            $contentBasedRecs,
+            $collaborativeRecs, 
+            $limit
+        );
         
         return $recommendations;
     }
@@ -159,7 +169,66 @@ class RecommendationEngine
     }
 
     /**
-     * Combine different recommendation strategies
+     * Get recommendations based on content similarity
+     */
+    private function getContentSimilarityRecommendations($userId, $limit)
+    {
+        // Get articles user has engaged with (high interaction weight)
+        $engagedArticles = UserPreference::where('user_id', $userId)
+            ->where('interaction_weight', '>', 3) // Only strong interactions
+            ->orderByDesc('interaction_weight')
+            ->limit(5) // Look at top 5 articles they loved
+            ->pluck('article_id')
+            ->toArray();
+
+        if (empty($engagedArticles)) {
+            return collect();
+        }
+
+        $readArticleIds = UserPreference::where('user_id', $userId)
+            ->pluck('article_id')
+            ->toArray();
+
+        $recommendations = collect();
+
+        // For each article they loved, find similar articles
+        foreach ($engagedArticles as $articleId) {
+            $similar = ContentAnalyzer::findSimilarArticles($articleId, 5);
+            
+            // Filter out already read articles
+            $similar = $similar->filter(function($article) use ($readArticleIds) {
+                return !in_array($article->id, $readArticleIds);
+            });
+            
+            $recommendations = $recommendations->merge($similar);
+        }
+
+        // Remove duplicates and return top matches
+        return $recommendations->unique('id')->take($limit * 2);
+    }
+
+    /**
+     * Combine different recommendation strategies (Advanced)
+     */
+    private function combineRecommendationsAdvanced($genreBased, $contentBased, $collaborative, $limit)
+    {
+        $combined = collect();
+        
+        // Weighted combination: 40% genre, 30% content, 30% collaborative
+        $genreCount = ceil($limit * 0.4);
+        $contentCount = ceil($limit * 0.3);
+        $collabCount = $limit - $genreCount - $contentCount;
+        
+        $combined = $combined->merge($genreBased->take($genreCount));
+        $combined = $combined->merge($contentBased->take($contentCount));
+        $combined = $combined->merge($collaborative->take($collabCount));
+        
+        // Remove duplicates and limit
+        return $combined->unique('id')->take($limit);
+    }
+
+    /**
+     * Combine different recommendation strategies (Legacy - kept for backwards compatibility)
      */
     private function combineRecommendations($contentBased, $collaborative, $limit)
     {

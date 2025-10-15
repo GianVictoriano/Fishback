@@ -15,11 +15,14 @@ class Profile extends Model
         'user_id',
         'role',
         'level',
+        'position',
         'avatar',
         'name',
         'program',
         'section',
         'description',
+        'is_anonymous',
+        'anonymous_name',
     ];
 
     public function user()

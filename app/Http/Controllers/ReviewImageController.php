@@ -17,6 +17,8 @@ class ReviewImageController extends Controller
             'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:20480',
             'group_id' => 'required|integer|exists:group_chats,id',
             'user_id' => 'required|integer|exists:users,id',
+            'current_reviewer_id' => 'nullable|integer|exists:users,id',
+            'review_stage' => 'sometimes|string|in:initial,peer_review,lead_review,approved',
         ]);
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
@@ -26,6 +28,8 @@ class ReviewImageController extends Controller
             'file' => $path,
             'group_id' => $request->input('group_id'),
             'user_id' => $request->input('user_id'),
+            'current_reviewer_id' => $request->input('current_reviewer_id'),
+            'review_stage' => $request->input('review_stage', 'initial'),
             'status' => 'pending',
             'no_of_approval' => 0,
             'uploaded_at' => now(),
@@ -84,6 +88,37 @@ class ReviewImageController extends Controller
         }
     }
 
+    public function update(Request $request, $id)
+    {
+        try {
+            $reviewImage = ReviewImage::findOrFail($id);
+            
+            $validator = Validator::make($request->all(), [
+                'current_reviewer_id' => 'sometimes|integer|exists:users,id',
+                'review_stage' => 'sometimes|string|in:initial,peer_review,lead_review,approved',
+            ]);
+            
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+            
+            if ($request->has('current_reviewer_id')) {
+                $reviewImage->current_reviewer_id = $request->current_reviewer_id;
+            }
+            
+            if ($request->has('review_stage')) {
+                $reviewImage->review_stage = $request->review_stage;
+            }
+            
+            $reviewImage->save();
+            
+            return response()->json($reviewImage);
+        } catch (Exception $e) {
+            Log::error("Failed to update review image for id {$id}: " . $e->getMessage());
+            return response()->json(['message' => 'Failed to update image.'], 500);
+        }
+    }
+
     public function show($id)
     {
         $reviewImage = ReviewImage::findOrFail($id);
@@ -99,7 +134,13 @@ class ReviewImageController extends Controller
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
-        $images = $query->with(['user:id,name'])->orderByDesc('uploaded_at')->get();
+        if ($request->has('review_stage')) {
+            $query->where('review_stage', $request->review_stage);
+        }
+        if ($request->has('current_reviewer_id')) {
+            $query->where('current_reviewer_id', $request->current_reviewer_id);
+        }
+        $images = $query->with(['user:id,name', 'group:id,name,status'])->orderByDesc('uploaded_at')->get();
         return response()->json($images);
     }
 }

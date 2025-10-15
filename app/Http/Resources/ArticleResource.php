@@ -14,7 +14,19 @@ class ArticleResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // Get the first media image if available
+        $image = null;
+        if ($this->media && $this->media->count() > 0) {
+            $firstMedia = $this->media->first();
+            $image = '/storage/' . str_replace('public/', '', $firstMedia->file_path);
+        }
+
         return array_merge(parent::toArray($request), [
+            'image' => $image,
+            'author' => [
+                'id' => $this->user->id ?? null,
+                'name' => $this->user->name ?? 'Unknown',
+            ],
             'metrics' => [
                 'visits' => $this->metrics->visits ?? 0,
                 'like_count' => $this->metrics->like_count ?? 0,

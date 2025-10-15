@@ -20,6 +20,7 @@ use App\Http\Controllers\ReviewImageController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\ContributionController;
 use App\Http\Controllers\Api\ApplicantController;
+use App\Http\Controllers\ArticleBookmarkController;
 
 /*
 |--------------------------------------------------------------------------
@@ -69,6 +70,8 @@ Route::middleware('force.api.auth')->group(function () {
     Route::delete('/comments/{comment}', [CommentController::class, 'delete']);
 });
 Route::get('/users', [UserController::class, 'index']);
+Route::get('/users/{id}', [UserController::class, 'show']);
+Route::get('/users/{userId}/bookmarks', [ArticleBookmarkController::class, 'getUserBookmarks']);
 Route::get('/public/articles', [ArticleController::class, 'publicArticles']);
 Route::get('/public/trending-articles', [ArticleController::class, 'trendingArticles']);
 Route::get('/public/articles/{article}', [ArticleController::class, 'show']);
@@ -88,10 +91,12 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/applications', [\App\Http\Controllers\Api\ApplicantController::class, 'index']);
     Route::get('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'show']);
     Route::put('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'update']);
+    Route::post('/applications/{id}/accept', [\App\Http\Controllers\Api\ApplicantController::class, 'accept']);
     Route::delete('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'destroy']);
 
 
     Route::get('/profile', [ProfileController::class, 'show']);
+    Route::put('/profile', [ProfileController::class, 'update']);
     
     // Articles - Moved to the top to ensure they're protected
     Route::apiResource('articles', ArticleController::class)->except(['index', 'show']);
@@ -102,13 +107,24 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/recommendations', [ArticleController::class, 'recommendations']);
     Route::post('/articles/{article}/interaction', [ArticleController::class, 'recordInteraction']);
 
+    // Article Bookmarks
+    Route::get('/bookmarks', [ArticleBookmarkController::class, 'index']);
+    Route::get('/bookmarks/article/{articleId}', [ArticleBookmarkController::class, 'getByArticle']);
+    Route::post('/bookmarks', [ArticleBookmarkController::class, 'store']);
+    Route::patch('/bookmarks/{id}', [ArticleBookmarkController::class, 'update']);
+    Route::delete('/bookmarks/{id}', [ArticleBookmarkController::class, 'destroy']);
+
     // Branding
     Route::post('/branding', [BrandingController::class, 'update']);
+    Route::post('/branding/reset', [BrandingController::class, 'reset']);
 
     // Group Chat & Messages
     Route::get('/group-chats', [GroupChatController::class, 'index']);
+    Route::get('/group-chats/{groupChat}', [GroupChatController::class, 'show']);
     Route::get('/group-chats/{groupChat}/messages', [ChatMessageController::class, 'index']);
     Route::post('/group-chats/{groupChat}/messages', [ChatMessageController::class, 'store']);
+    Route::get('/group-chats/{groupChat}/members', [GroupChatController::class, 'getMembers']);
+    Route::patch('/group-chats/{groupChat}/status', [GroupChatController::class, 'updateStatus']);
 
     // Plagiarism Scans
     Route::post('/plagiarism-scans', [PlagController::class, 'submitScan']);
@@ -117,12 +133,14 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/review-images', [ReviewImageController::class, 'store']);
     Route::patch('/review-images/{id}/approve', [ReviewImageController::class, 'approve']);
     Route::patch('/review-images/{id}/reject', [ReviewImageController::class, 'reject']);
+    Route::patch('/review-images/{id}', [ReviewImageController::class, 'update']);
     Route::get('/review-images/{id}', [ReviewImageController::class, 'show']);
     Route::get('/review-images', [ReviewImageController::class, 'index']);
     
     // Review Content
     Route::get('/review-content', [ReviewContentController::class, 'index']);
     Route::post('/review-content', [ReviewContentController::class, 'store']);
+    Route::patch('/review-content/{id}', [ReviewContentController::class, 'update']);
     Route::patch('/review-content/{id}/approve', [ReviewContentController::class, 'approve']);
     Route::patch('/review-content/{id}/reject', [ReviewContentController::class, 'reject']);
     Route::get('/review-content/preview/{id}', [ReviewContentController::class, 'preview']);
