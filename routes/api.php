@@ -128,6 +128,9 @@ Route::middleware('force.api.auth')->group(function () {
     Route::patch('/bookmarks/{id}', [ArticleBookmarkController::class, 'update']);
     Route::delete('/bookmarks/{id}', [ArticleBookmarkController::class, 'destroy']);
 
+    // Media Upload (for inline images)
+    Route::post('/upload-media', [ArticleController::class, 'uploadMedia']);
+
     // Branding
     Route::post('/branding', [BrandingController::class, 'update']);
     Route::post('/branding/reset', [BrandingController::class, 'reset']);

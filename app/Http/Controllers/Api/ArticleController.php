@@ -262,6 +262,59 @@ class ArticleController extends Controller
         }
     }
 
+    public function uploadMedia(Request $request)
+    {
+        try {
+            $request->validate([
+                'media' => 'required|array',
+                'media.*' => 'file|mimes:jpg,jpeg,png,gif|max:10240',
+            ]);
+
+            $uploadedFiles = [];
+
+            if ($request->hasFile('media')) {
+                foreach ($request->file('media') as $file) {
+                    try {
+                        if (!$file->isValid()) {
+                            Log::error('Invalid file uploaded: ' . $file->getClientOriginalName());
+                            continue;
+                        }
+
+                        $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                        $path = $file->storeAs('articles/inline', $fileName, 'public');
+                        
+                        if (!$path) {
+                            throw new \Exception('Failed to store file: ' . $file->getClientOriginalName());
+                        }
+                        
+                        $uploadedFiles[] = [
+                            'file_path' => $path,
+                            'file_name' => $file->getClientOriginalName(),
+                            'file_type' => $file->getClientOriginalExtension(),
+                            'mime_type' => $file->getMimeType(),
+                            'size' => $file->getSize(),
+                        ];
+                        
+                    } catch (\Exception $e) {
+                        Log::error('Error uploading media: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+                        continue;
+                    }
+                }
+            }
+
+            return response()->json([
+                'message' => 'Media uploaded successfully',
+                'data' => $uploadedFiles
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('Validation error uploading media: ' . $e->getMessage());
+            return response()->json(['message' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Error uploading media: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json(['message' => 'Failed to upload media', 'error' => $e->getMessage()], 500);
+        }
+    }
+
     protected function handleMediaUploads($files, Article $article)
     {
         if (!is_array($files)) {
