@@ -45,6 +45,7 @@ class ApplicantController extends Controller
         }
 
         try {
+            // Create applicant record (pending approval)
             $applicant = Applicant::create([
                 'full_name' => $request->full_name,
                 'sr_code' => $request->sr_code,
@@ -58,7 +59,7 @@ class ApplicantController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Application submitted successfully',
+                'message' => 'Application submitted successfully! We will review it and get back to you soon.',
                 'data' => $applicant
             ], 201);
 

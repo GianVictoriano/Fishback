@@ -25,6 +25,7 @@ use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Api\ApplicationPeriodController;
 use App\Http\Controllers\Api\FolioController;
 use App\Http\Controllers\Api\CoverageRequestController;
+use App\Http\Controllers\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -47,9 +48,6 @@ Route::post('/plagiarism-webhook', [PlagController::class, 'webhook']);
 Route::post('/auth/google', [AuthController::class, 'handleGoogleCallback']);
 Route::post('/google/access-token', [\App\Http\Controllers\GoogleController::class, 'getAccessToken']);
 Route::post('/login-as', [AuthController::class, 'loginAs']);
-
-// Public application submission
-Route::post('/applications', [ApplicantController::class, 'store']);
 
 // Public application period check
 Route::get('/application-period', [ApplicationPeriodController::class, 'index']);
@@ -94,8 +92,10 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/user', fn(Request $request) => $request->user());
     Route::get('/users/me', [UserController::class, 'me']);
     
+    // User registration/application to become collaborator
+    Route::post('/applications', [ApplicantController::class, 'store']);
+    
     // Application management (admin only)
-    // Route::post('/applications', [ApplicantController::class, 'store']); // Moved to public routes
     Route::get('/applications', [\App\Http\Controllers\Api\ApplicantController::class, 'index']);
     Route::get('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'show']);
     Route::put('/applications/{id}', [\App\Http\Controllers\Api\ApplicantController::class, 'update']);
@@ -211,6 +211,9 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/coverage-requests/{id}/approve', [CoverageRequestController::class, 'approve']);
     Route::post('/coverage-requests/{id}/reject', [CoverageRequestController::class, 'reject']);
     Route::delete('/coverage-requests/{id}', [CoverageRequestController::class, 'destroy']);
+
+    // Dashboard Statistics
+    Route::get('/dashboard/statistics', [DashboardController::class, 'getStatistics']);
 });
 
 ?>
