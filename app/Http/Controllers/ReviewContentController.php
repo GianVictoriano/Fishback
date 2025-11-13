@@ -47,6 +47,11 @@ class ReviewContentController extends Controller
                 'is_folio_submission' => $request->input('is_folio_submission', false),
                 'folio_id' => $request->input('folio_id'),
             ]);
+            
+            // Update group_chat track status to 'review' when file is uploaded
+            \DB::table('group_chats')
+                ->where('id', $request->input('group_id'))
+                ->update(['track' => 'review']);
 
             // Post system message to group chat (draft/sent)
         \App\Models\ChatMessage::create([
@@ -133,6 +138,11 @@ class ReviewContentController extends Controller
             $reviewContent->status = 'approved';
             $reviewContent->no_of_approval += 1;
             $reviewContent->save();
+            
+            // Update group_chat track status to 'approved' when lead reviewer approves
+            \DB::table('group_chats')
+                ->where('id', $reviewContent->group_id)
+                ->update(['track' => 'approved']);
 
             // Post system message to group chat
             \App\Models\ChatMessage::create([

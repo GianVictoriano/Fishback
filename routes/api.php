@@ -116,17 +116,17 @@ Route::middleware('force.api.auth')->group(function () {
     Route::apiResource('articles', ArticleController::class)->except(['index', 'show']);
     Route::get('/articles', [ArticleController::class, 'index']);
     Route::get('/articles/{article}', [ArticleController::class, 'show']);
-    
-    // ML Recommendations and Interaction Tracking
     Route::get('/recommendations', [ArticleController::class, 'recommendations']);
     Route::post('/articles/{article}/interaction', [ArticleController::class, 'recordInteraction']);
-
-    // Article Bookmarks
-    Route::get('/bookmarks', [ArticleBookmarkController::class, 'index']);
+    Route::post('/upload-media', [ArticleController::class, 'uploadMedia']);
+    Route::get('/dashboard-stats', [ArticleController::class, 'getDashboardStats']);
+    Route::get('/contributors', [ArticleController::class, 'getAllContributors']);
     Route::get('/bookmarks/article/{articleId}', [ArticleBookmarkController::class, 'getByArticle']);
     Route::post('/bookmarks', [ArticleBookmarkController::class, 'store']);
     Route::patch('/bookmarks/{id}', [ArticleBookmarkController::class, 'update']);
     Route::delete('/bookmarks/{id}', [ArticleBookmarkController::class, 'destroy']);
+
+    Route::post('/upload-media', [ArticleController::class, 'uploadMedia']);
 
     // Branding
     Route::post('/branding', [BrandingController::class, 'update']);

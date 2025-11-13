@@ -26,17 +26,37 @@ class EmailController extends Controller
         }
 
         try {
+            \Log::info('Attempting to send email', [
+                'to' => $request->to,
+                'subject' => $request->subject,
+                'applicant_name' => $request->applicant_name,
+                'message_length' => strlen($request->message)
+            ]);
+
             Mail::raw($request->message, function ($mail) use ($request) {
                 $mail->to($request->to)
                      ->subject($request->subject)
                      ->from(config('mail.from.address'), config('mail.from.name'));
             });
 
+            \Log::info('Email sent successfully');
             return response()->json([
                 'message' => 'Email sent successfully'
             ], 200);
         } catch (\Exception $e) {
             \Log::error('Failed to send email: ' . $e->getMessage());
+            \Log::error('Email details:', [
+                'to' => $request->to,
+                'subject' => $request->subject,
+                'mail_config' => [
+                    'driver' => config('mail.default'),
+                    'host' => config('mail.mailers.smtp.host'),
+                    'port' => config('mail.mailers.smtp.port'),
+                    'encryption' => config('mail.mailers.smtp.encryption'),
+                    'username' => config('mail.mailers.smtp.username'),
+                    'from' => config('mail.from.address')
+                ]
+            ]);
             return response()->json([
                 'message' => 'Failed to send email',
                 'error' => $e->getMessage()
