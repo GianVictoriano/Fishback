@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('important_notes', 'version')) {
+            return;
+        }
+
         Schema::table('important_notes', function (Blueprint $table) {
             $table->decimal('version', 8, 1)->nullable()->after('is_active');
             $table->string('versionable_type')->nullable()->after('version'); // 'App\Models\ReviewContent' or 'App\Models\ReviewImage'
@@ -27,6 +31,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (!Schema::hasColumn('important_notes', 'version')) {
+            return;
+        }
+
         Schema::table('important_notes', function (Blueprint $table) {
             $table->dropIndex(['versionable_type', 'versionable_id']);
             $table->dropIndex(['group_chat_id', 'version']);
