@@ -7,6 +7,7 @@ use App\Http\Controllers\GroupChatController;
 use App\Http\Controllers\ChatMessageController;
 use App\Http\Controllers\PlagController;
 use App\Http\Controllers\ReviewContentController;
+use App\Http\Controllers\ReviewCommentController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\ScrumBoardController;
@@ -24,8 +25,7 @@ use App\Http\Controllers\ArticleBookmarkController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Api\ApplicationPeriodController;
 use App\Http\Controllers\Api\FolioController;
-use App\Http\Controllers\Api\CoverageRequestController;
-use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ImportantNoteController;
 
 /*
 |--------------------------------------------------------------------------
@@ -159,6 +159,12 @@ Route::middleware('force.api.auth')->group(function () {
     Route::patch('/review-content/{id}/reject', [ReviewContentController::class, 'reject']);
     Route::get('/review-content/preview/{id}', [ReviewContentController::class, 'preview']);
 
+    // Review Comments
+    Route::get('/review-comments/{reviewContentId}', [ReviewCommentController::class, 'index']);
+    Route::post('/review-comments', [ReviewCommentController::class, 'store']);
+    Route::patch('/review-comments/{id}', [ReviewCommentController::class, 'update']);
+    Route::delete('/review-comments/{id}', [ReviewCommentController::class, 'destroy']);
+
     // Module & Collaborators
     Route::get('/modules', [ModuleController::class, 'getModules']);
     Route::get('/collaborators', [ModuleController::class, 'getCollaborators']);
@@ -212,8 +218,13 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/coverage-requests/{id}/reject', [CoverageRequestController::class, 'reject']);
     Route::delete('/coverage-requests/{id}', [CoverageRequestController::class, 'destroy']);
 
+    // Important Notes
+    Route::get('/important-notes', [ImportantNoteController::class, 'index']);
+    Route::post('/important-notes', [ImportantNoteController::class, 'store']);
+    Route::get('/important-notes/{id}', [ImportantNoteController::class, 'show']);
+    Route::patch('/important-notes/{id}', [ImportantNoteController::class, 'update']);
+    Route::delete('/important-notes/{id}', [ImportantNoteController::class, 'destroy']);
+
     // Dashboard Statistics
     Route::get('/dashboard/statistics', [DashboardController::class, 'getStatistics']);
 });
-
-?>
