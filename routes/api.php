@@ -26,6 +26,8 @@ use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Api\ApplicationPeriodController;
 use App\Http\Controllers\Api\FolioController;
 use App\Http\Controllers\ImportantNoteController;
+use App\Http\Controllers\Api\CoverageRequestController;
+use App\Http\Controllers\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -121,6 +123,15 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/upload-media', [ArticleController::class, 'uploadMedia']);
     Route::get('/dashboard-stats', [ArticleController::class, 'getDashboardStats']);
     Route::get('/contributors', [ArticleController::class, 'getAllContributors']);
+    
+    // Media Management
+    Route::get('/media/articles', [ArticleController::class, 'getMediaArticles']);
+    Route::put('/articles/{article}/update', [ArticleController::class, 'updateArticle']);
+    Route::patch('/articles/{article}/archive', [ArticleController::class, 'toggleArchive']);
+    Route::patch('/articles/{article}/feature', [ArticleController::class, 'toggleFeatured']);
+    Route::get('/articles/featured', [ArticleController::class, 'getFeaturedArticles']);
+    Route::delete('/articles/{article}', [ArticleController::class, 'deleteArticle']);
+    
     Route::get('/bookmarks/article/{articleId}', [ArticleBookmarkController::class, 'getByArticle']);
     Route::post('/bookmarks', [ArticleBookmarkController::class, 'store']);
     Route::patch('/bookmarks/{id}', [ArticleBookmarkController::class, 'update']);
@@ -153,11 +164,13 @@ Route::middleware('force.api.auth')->group(function () {
     
     // Review Content
     Route::get('/review-content', [ReviewContentController::class, 'index']);
+    Route::get('/review-content/versions', [ReviewContentController::class, 'versions']);
+    Route::get('/review-content/preview/{id}', [ReviewContentController::class, 'preview']);
+    Route::get('/review-content/{id}', [ReviewContentController::class, 'show']);
     Route::post('/review-content', [ReviewContentController::class, 'store']);
     Route::patch('/review-content/{id}', [ReviewContentController::class, 'update']);
     Route::patch('/review-content/{id}/approve', [ReviewContentController::class, 'approve']);
     Route::patch('/review-content/{id}/reject', [ReviewContentController::class, 'reject']);
-    Route::get('/review-content/preview/{id}', [ReviewContentController::class, 'preview']);
 
     // Review Comments
     Route::get('/review-comments/{reviewContentId}', [ReviewCommentController::class, 'index']);
@@ -227,4 +240,9 @@ Route::middleware('force.api.auth')->group(function () {
 
     // Dashboard Statistics
     Route::get('/dashboard/statistics', [DashboardController::class, 'getStatistics']);
+
+    // Literary Works (Heyzine Integration)
+    Route::post('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'store']);
+    Route::get('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'index']);
+    Route::get('/literary-works/{id}', [App\Http\Controllers\Api\LiteraryWorkController::class, 'show']);
 });

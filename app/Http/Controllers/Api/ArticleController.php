@@ -6,20 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreArticleRequest;
 use App\Http\Resources\ArticleResource;
 use App\Models\Article;
+use App\Models\Featured;
 use App\Services\RecommendationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class ArticleController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $articles = Article::with(['media', 'user'])
-            ->where('user_id', auth()->id())
+            ->where('user_id', $request->user()->id)
             ->latest()
             ->paginate(10);
 
@@ -778,18 +780,18 @@ class ArticleController extends Controller
                     ]);
                     
                     // Use direct DB query to count group chats - more reliable
-                    $totalAssigned = \DB::table('group_chat_members')
+                    $totalAssigned = DB::table('group_chat_members')
                         ->where('user_id', $user->id)
                         ->count();
                     
                     // Get group chat IDs for this user
-                    $groupChatIds = \DB::table('group_chat_members')
+                    $groupChatIds = DB::table('group_chat_members')
                         ->where('user_id', $user->id)
                         ->pluck('group_chat_id')
                         ->toArray();
                     
                     // Get group chats within timeframe
-                    $filteredGroupChatIds = \DB::table('group_chats')
+                    $filteredGroupChatIds = DB::table('group_chats')
                         ->whereIn('id', $groupChatIds)
                         ->where('updated_at', '>=', $cutoffDate)
                         ->pluck('id')
@@ -896,6 +898,226 @@ class ArticleController extends Controller
                 'error' => 'Failed to fetch contributors',
                 'message' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Get published articles for media management
+     */
+    public function getMediaArticles(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $genre = $request->input('genre', 'all');
+            $search = $request->input('search', '');
+            $isFeatured = $request->input('featured');
+            
+            $query = Article::with(['media', 'user', 'featured'])
+                ->where('user_id', $user->id);
+            
+            // Filter by genre
+            if ($genre !== 'all') {
+                $query->where('genre', $genre);
+            }
+            
+            // Filter by featured status
+            if ($isFeatured !== null) {
+                if ($isFeatured === 'true') {
+                    $query->whereHas('featured');
+                } else {
+                    $query->whereDoesntHave('featured');
+                }
+            }
+            
+            // Search functionality
+            if ($search) {
+                $query->where(function($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                      ->orWhere('content', 'like', "%{$search}%");
+                });
+            }
+            
+            $articles = $query->orderBy('created_at', 'desc')->paginate(12);
+            
+            return ArticleResource::collection($articles);
+        } catch (\Exception $e) {
+            Log::error('Error fetching media articles: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch articles'], 500);
+        }
+    }
+
+    /**
+     * Update article (edit)
+     */
+    public function updateArticle(Request $request, Article $article)
+    {
+        try {
+            // Check if user owns the article
+            if ($article->user_id !== $request->user()->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'content' => 'required|string',
+                'genre' => 'required|in:articles,opinions,sports,editorial,artworks',
+                'status' => 'required|in:draft,published,archived',
+            ]);
+
+            $article->update($validated);
+
+            // If publishing from draft, set published_at
+            if ($validated['status'] === 'published' && !$article->published_at) {
+                $article->update(['published_at' => now()]);
+            }
+
+            return new ArticleResource($article->load('media'));
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Error updating article: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to update article'], 500);
+        }
+    }
+
+    /**
+     * Archive/Unarchive article
+     */
+    public function toggleArchive(Request $request, Article $article)
+    {
+        try {
+            // Check if user owns the article
+            if ($article->user_id !== $request->user()->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+
+            $newStatus = $article->status === 'archived' ? 'published' : 'archived';
+            
+            $article->update(['status' => $newStatus]);
+
+            // If archiving, remove from featured table
+            if ($newStatus === 'archived') {
+                Featured::unfeatureArticle($article->id);
+            }
+
+            return response()->json([
+                'message' => $newStatus === 'archived' ? 'Article archived' : 'Article unarchived',
+                'status' => $newStatus
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error toggling archive: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to update article status'], 500);
+        }
+    }
+
+    /**
+     * Toggle featured status
+     */
+    public function toggleFeatured(Request $request, Article $article)
+    {
+        Log::info('toggleFeatured called', [
+            'article_id' => $article->id,
+            'user_id' => $request->user()->id,
+            'article_user_id' => $article->user_id,
+            'article_status' => $article->status
+        ]);
+        
+        try {
+            // Check if user owns the article
+            if ($article->user_id !== $request->user()->id) {
+                Log::warning('Unauthorized attempt to feature article', [
+                    'article_id' => $article->id,
+                    'article_owner' => $article->user_id,
+                    'request_user' => $request->user()->id
+                ]);
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+
+            // Only published articles can be featured
+            if ($article->status !== 'published') {
+                Log::warning('Attempt to feature unpublished article', [
+                    'article_id' => $article->id,
+                    'status' => $article->status
+                ]);
+                return response()->json(['message' => 'Only published articles can be featured'], 422);
+            }
+
+            $isCurrentlyFeatured = Featured::isFeatured($article->id);
+            Log::info('Current featured status', ['article_id' => $article->id, 'is_featured' => $isCurrentlyFeatured]);
+            
+            if ($isCurrentlyFeatured) {
+                // Unfeature the article
+                Featured::unfeatureArticle($article->id);
+                $message = 'Article unfeatured';
+                $isFeatured = false;
+                $featuredAt = null;
+            } else {
+                // Feature the article
+                $featured = Featured::featureArticle($article->id);
+                $message = 'Article featured';
+                $isFeatured = true;
+                $featuredAt = $featured->featured_at;
+            }
+
+            Log::info('Featured status updated successfully', [
+                'article_id' => $article->id,
+                'new_status' => $isFeatured,
+                'featured_at' => $featuredAt
+            ]);
+
+            return response()->json([
+                'message' => $message,
+                'is_featured' => $isFeatured,
+                'featured_at' => $featuredAt
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error toggling featured: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to update featured status'], 500);
+        }
+    }
+
+    /**
+     * Get featured articles
+     */
+    public function getFeaturedArticles(Request $request)
+    {
+        try {
+            $articles = Article::with(['media', 'user', 'featured'])
+                ->where('status', 'published')
+                ->whereHas('featured')
+                ->orderByDesc(
+                    Article::select('featured_at')
+                        ->from('featured')
+                        ->whereColumn('featured.article_id', 'articles.id')
+                        ->limit(1)
+                )
+                ->paginate(10);
+
+            return ArticleResource::collection($articles);
+        } catch (\Exception $e) {
+            Log::error('Error fetching featured articles: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch featured articles'], 500);
+        }
+    }
+
+    /**
+     * Delete article
+     */
+    public function deleteArticle(Request $request, Article $article)
+    {
+        try {
+            // Check if user owns the article
+            if ($article->user_id !== $request->user()->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+
+            // Soft delete
+            $article->delete();
+
+            return response()->json(['message' => 'Article deleted successfully']);
+        } catch (\Exception $e) {
+            Log::error('Error deleting article: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to delete article'], 500);
         }
     }
 }

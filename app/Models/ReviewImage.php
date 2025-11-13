@@ -17,6 +17,7 @@ class ReviewImage extends Model
         'review_stage',
         'status',
         'no_of_approval',
+        'version',
         'uploaded_at',
         'is_folio_submission',
         'folio_id',
@@ -40,5 +41,10 @@ class ReviewImage extends Model
     public function group()
     {
         return $this->belongsTo(GroupChat::class, 'group_id');
+    }
+
+    public function importantNotes()
+    {
+        return $this->morphMany(ImportantNote::class, 'versionable');
     }
 }

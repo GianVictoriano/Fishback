@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use App\Models\ReviewImage;
 use App\Models\ChatMessage;
 use Exception;
@@ -23,6 +24,23 @@ class ReviewImageController extends Controller
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
+        // Calculate version for this group
+        $groupId = $request->input('group_id');
+        $latestVersion = ReviewImage::where('group_id', $groupId)
+            ->orderBy('version', 'desc')
+            ->value('version');
+        
+        // Handle version calculation with proper decimal precision
+        if ($latestVersion === null) {
+            $newVersion = 1.0;
+        } else {
+            // Convert to float to avoid decimal precision issues
+            $newVersion = round((float)$latestVersion + 0.1, 1);
+        }
+        
+        // Log for debugging
+        Log::info("Image version calculation for group {$groupId}: latest={$latestVersion}, new={$newVersion}");
+
         $path = $request->file('image')->store('review_images', 'public');
         $reviewImage = ReviewImage::create([
             'file' => $path,
@@ -32,20 +50,21 @@ class ReviewImageController extends Controller
             'review_stage' => $request->input('review_stage', 'initial'),
             'status' => 'pending',
             'no_of_approval' => 0,
+            'version' => $newVersion,
             'uploaded_at' => now(),
             'is_folio_submission' => $request->input('is_folio_submission', false),
             'folio_id' => $request->input('folio_id'),
         ]);
         
         // Update group_chat track status to 'review' when file is uploaded
-        \DB::table('group_chats')
+        DB::table('group_chats')
             ->where('id', $request->input('group_id'))
             ->update(['track' => 'review']);
         
         // Post system message to group chat
         ChatMessage::create([
             'user_id' => null,
-            'message' => 'An image draft was uploaded by ' . (auth()->user() ? auth()->user()->name : 'a user') . ' and is awaiting review.',
+            'message' => 'An image draft was uploaded by ' . ($request->user() ? $request->user()->name : 'a user') . ' and is awaiting review.',
             'group_chat_id' => $reviewImage->group_id,
             'system' => true,
             'type' => 'sent',
@@ -53,7 +72,14 @@ class ReviewImageController extends Controller
         return response()->json($reviewImage, 201);
     }
 
-    public function approve($id)
+    /**
+     * Approve review image.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function approve(Request $request, $id)
     {
         try {
             $reviewImage = ReviewImage::findOrFail($id);
@@ -62,14 +88,14 @@ class ReviewImageController extends Controller
             $reviewImage->save();
             
             // Update group_chat track status to 'approved' when lead reviewer approves
-            \DB::table('group_chats')
+            DB::table('group_chats')
                 ->where('id', $reviewImage->group_id)
                 ->update(['track' => 'approved']);
             
             // Post system message
             ChatMessage::create([
                 'user_id' => null,
-                'message' => 'The image draft was approved by ' . (auth()->user() ? auth()->user()->name : 'a reviewer') . '.',
+                'message' => 'The image draft was approved by ' . ($request->user() ? $request->user()->name : 'a reviewer') . '.',
                 'group_chat_id' => $reviewImage->group_id,
                 'system' => true,
                 'type' => 'approve',
@@ -81,20 +107,44 @@ class ReviewImageController extends Controller
         }
     }
 
-    public function reject($id)
+    /**
+     * Reject review image.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function reject(Request $request, $id)
     {
         try {
+            $request->validate([
+                'comment' => 'required|string|max:1000',
+            ]);
+
             $reviewImage = ReviewImage::findOrFail($id);
             $reviewImage->status = 'rejected';
             $reviewImage->save();
+
+            // Create important note with version information
+            \App\Models\ImportantNote::create([
+                'group_chat_id' => $reviewImage->group_id,
+                'user_id' => $request->user()->id,
+                'content' => $request->comment,
+                'is_active' => true,
+                'version' => $reviewImage->version,
+                'versionable_type' => 'App\Models\ReviewImage',
+                'versionable_id' => $reviewImage->id,
+            ]);
+
             // Post system message
             ChatMessage::create([
                 'user_id' => null,
-                'message' => 'The image draft was rejected by ' . (auth()->user() ? auth()->user()->name : 'a reviewer') . '.',
+                'message' => 'The image draft was rejected by ' . ($request->user() ? $request->user()->name : 'a reviewer') . '.',
                 'group_chat_id' => $reviewImage->group_id,
                 'system' => true,
                 'type' => 'reject',
             ]);
+            
             return response()->json($reviewImage);
         } catch (Exception $e) {
             Log::error("Failed to reject review image for id {$id}: " . $e->getMessage());

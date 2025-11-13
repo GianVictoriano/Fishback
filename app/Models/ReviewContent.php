@@ -20,6 +20,7 @@ class ReviewContent extends Model
         'status',
         'uploaded_at',
         'no_of_approval',
+        'version',
         'is_folio_submission',
         'folio_id',
     ];
@@ -44,5 +45,10 @@ class ReviewContent extends Model
     public function currentReviewer()
     {
         return $this->belongsTo(User::class, 'current_reviewer_id');
+    }
+
+    public function importantNotes()
+    {
+        return $this->morphMany(ImportantNote::class, 'versionable');
     }
 }

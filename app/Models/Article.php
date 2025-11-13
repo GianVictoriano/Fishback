@@ -23,10 +23,13 @@ class Article extends Model
         'genre',
         'keywords',
         'content_hash',
+        'is_featured',
+        'featured_at',
     ];
 
     protected $casts = [
         'published_at' => 'datetime',
+        'featured_at' => 'datetime',
     ];
 
     /**
@@ -65,5 +68,18 @@ class Article extends Model
     public function preferences()
     {
         return $this->hasMany(UserPreference::class);
+    }
+
+    public function featured()
+    {
+        return $this->hasOne(Featured::class);
+    }
+
+    /**
+     * Get the is_featured attribute from the featured relationship
+     */
+    public function getIsFeaturedAttribute()
+    {
+        return $this->featured !== null;
     }
 }

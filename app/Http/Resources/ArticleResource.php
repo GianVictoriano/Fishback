@@ -23,6 +23,8 @@ class ArticleResource extends JsonResource
 
         return array_merge(parent::toArray($request), [
             'image' => $image,
+            'is_featured' => $this->is_featured,
+            'featured_at' => $this->featured?->featured_at,
             'author' => [
                 'id' => $this->user->id ?? null,
                 'name' => $this->user->name ?? 'Unknown',

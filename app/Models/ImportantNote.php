@@ -16,10 +16,14 @@ class ImportantNote extends Model
         'user_id',
         'content',
         'is_active',
+        'version',
+        'versionable_type',
+        'versionable_id',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'version' => 'decimal:1',
     ];
 
     public function groupChat()
@@ -30,5 +34,10 @@ class ImportantNote extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function versionable()
+    {
+        return $this->morphTo();
     }
 }

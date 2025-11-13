@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\ReviewContent;
+use App\Models\ReviewImage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 use Exception;
 
 class ReviewContentController extends Controller
@@ -33,6 +35,23 @@ class ReviewContentController extends Controller
                 return response()->json(['errors' => $validator->errors()], 422);
             }
 
+            // Calculate version for this group
+            $groupId = $request->input('group_id');
+            $latestVersion = ReviewContent::where('group_id', $groupId)
+                ->orderBy('version', 'desc')
+                ->value('version');
+            
+            // Handle version calculation with proper decimal precision
+            if ($latestVersion === null) {
+                $newVersion = 1.0;
+            } else {
+                // Convert to float to avoid decimal precision issues
+                $newVersion = round((float)$latestVersion + 0.1, 1);
+            }
+            
+            // Log for debugging
+            Log::info("Version calculation for group {$groupId}: latest={$latestVersion}, new={$newVersion}");
+
             $path = $request->file('file')->store('review_uploads', 'public');
 
             $reviewContent = ReviewContent::create([
@@ -43,20 +62,21 @@ class ReviewContentController extends Controller
                 'review_stage' => $request->input('review_stage', 'initial'),
                 'status' => $request->input('status', 'pending'),
                 'no_of_approval' => $request->input('no_of_approval', 0),
+                'version' => $newVersion,
                 'uploaded_at' => now(),
                 'is_folio_submission' => $request->input('is_folio_submission', false),
                 'folio_id' => $request->input('folio_id'),
             ]);
             
             // Update group_chat track status to 'review' when file is uploaded
-            \DB::table('group_chats')
+            DB::table('group_chats')
                 ->where('id', $request->input('group_id'))
                 ->update(['track' => 'review']);
 
             // Post system message to group chat (draft/sent)
         \App\Models\ChatMessage::create([
             'user_id' => null,
-            'message' => 'File "' . basename($reviewContent->file) . '" was uploaded by ' . (auth()->user() ? auth()->user()->name : 'a user') . ' and is awaiting review.',
+            'message' => 'File "' . basename($reviewContent->file) . '" was uploaded by ' . ($request->user() ? $request->user()->name : 'a user') . ' and is awaiting review.',
             'group_chat_id' => $reviewContent->group_id,
             'system' => true,
             'type' => 'sent',
@@ -128,10 +148,11 @@ class ReviewContentController extends Controller
     /**
      * Approve review content.
      *
+     * @param  \Illuminate\Http\Request  $request
      * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function approve($id)
+    public function approve(Request $request, $id)
     {
         try {
             $reviewContent = ReviewContent::findOrFail($id);
@@ -140,14 +161,14 @@ class ReviewContentController extends Controller
             $reviewContent->save();
             
             // Update group_chat track status to 'approved' when lead reviewer approves
-            \DB::table('group_chats')
+            DB::table('group_chats')
                 ->where('id', $reviewContent->group_id)
                 ->update(['track' => 'approved']);
 
             // Post system message to group chat
             \App\Models\ChatMessage::create([
                 'user_id' => null,
-                'message' => 'The draft was approved by ' . (auth()->user() ? auth()->user()->name : 'a reviewer') . '.',
+                'message' => 'The draft was approved by ' . ($request->user() ? $request->user()->name : 'a reviewer') . '.',
                 'group_chat_id' => $reviewContent->group_id,
                 'system' => true,
                 'type' => 'approve',
@@ -157,6 +178,28 @@ class ReviewContentController extends Controller
         } catch (Exception $e) {
             Log::error("Failed to approve review content for id {$id}: " . $e->getMessage());
             return response()->json(['message' => 'Failed to approve content.'], 500);
+        }
+    }
+
+    /**
+     * Display the specified resource.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function show($id)
+    {
+        try {
+            $reviewContent = ReviewContent::with(['user:id,name', 'group:id,name'])
+                ->findOrFail($id);
+                
+            return response()->json($reviewContent);
+        } catch (Exception $e) {
+            Log::error("Failed to fetch review content for id {$id}: " . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to fetch review content.',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -190,20 +233,36 @@ class ReviewContentController extends Controller
     /**
      * Reject review content.
      *
+     * @param  \Illuminate\Http\Request  $request
      * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function reject($id)
+    public function reject(Request $request, $id)
     {
         try {
+            $request->validate([
+                'comment' => 'required|string|max:1000',
+            ]);
+
             $reviewContent = ReviewContent::findOrFail($id);
             $reviewContent->status = 'rejected';
             $reviewContent->save();
 
+            // Create important note with version information
+            \App\Models\ImportantNote::create([
+                'group_chat_id' => $reviewContent->group_id,
+                'user_id' => $request->user()->id,
+                'content' => $request->comment,
+                'is_active' => true,
+                'version' => $reviewContent->version,
+                'versionable_type' => 'App\Models\ReviewContent',
+                'versionable_id' => $reviewContent->id,
+            ]);
+
             // Post system message to group chat
             \App\Models\ChatMessage::create([
                 'user_id' => null,
-                'message' => 'The draft was rejected by ' . (auth()->user() ? auth()->user()->name : 'a reviewer') . '.',
+                'message' => 'The draft was rejected by ' . ($request->user() ? $request->user()->name : 'a reviewer') . '.',
                 'group_chat_id' => $reviewContent->group_id,
                 'system' => true,
                 'type' => 'reject',
@@ -248,8 +307,18 @@ class ReviewContentController extends Controller
                     foreach ($phpWord->getSections() as $section) {
                         $elements = $section->getElements();
                         foreach ($elements as $element) {
-                            if (method_exists($element, 'getText')) {
-                                $text .= $element->getText() . "\n";
+                            /** @var \PhpOffice\PhpWord\Element\AbstractElement $element */
+                            // Check if element has getText method before calling it
+                            if (is_object($element) && method_exists($element, 'getText')) {
+                                try {
+                                    $elementText = $element->getText();
+                                    if (is_string($elementText)) {
+                                        $text .= $elementText . "\n";
+                                    }
+                                } catch (\Exception $e) {
+                                    // Skip this element if getText fails
+                                    continue;
+                                }
                             }
                         }
                     }
@@ -264,6 +333,47 @@ class ReviewContentController extends Controller
             return response()->json(['error' => 'Failed to preview file: ' . $e->getMessage()], 500);
         }
     }
+    /**
+     * Get all versions for a specific group.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function versions(Request $request)
+    {
+        try {
+            $groupId = $request->input('group_id');
+            
+            if (!$groupId) {
+                return response()->json(['error' => 'Group ID is required'], 422);
+            }
+
+            // Get all documents for this group with version info
+            $documents = ReviewContent::where('group_id', $groupId)
+                ->with(['user:id,name'])
+                ->orderBy('uploaded_at', 'desc')
+                ->get(['id', 'file', 'version', 'user_id', 'uploaded_at', 'status']);
+
+            // Get all images for this group with version info
+            $images = ReviewImage::where('group_id', $groupId)
+                ->with(['user:id,name'])
+                ->orderBy('uploaded_at', 'desc')
+                ->get(['id', 'file', 'version', 'user_id', 'uploaded_at', 'status']);
+
+            return response()->json([
+                'documents' => $documents,
+                'images' => $images
+            ]);
+
+        } catch (Exception $e) {
+            Log::error("Failed to fetch versions for group: " . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to fetch versions.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function preview($id)
 {
     return $this->previewText($id);

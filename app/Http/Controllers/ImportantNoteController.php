@@ -15,17 +15,34 @@ class ImportantNoteController extends Controller
      */
     public function index(Request $request)
     {
-        $groupChatId = $request->query('group_chat_id');
+        $query = ImportantNote::query();
 
-        if (!$groupChatId) {
-            return response()->json(['message' => 'Group chat ID is required'], 400);
+        // Always eager-load the relations we need for the UI
+        $query->with(['user:id,name', 'groupChat:id,name']);
+
+        // Filter by group_chat_id when provided (kept for backward-compat)
+        if ($request->filled('group_chat_id')) {
+            $query->where('group_chat_id', $request->query('group_chat_id'));
         }
 
-        $notes = ImportantNote::where('group_chat_id', $groupChatId)
-            ->where('is_active', true)
-            ->with(['user:id,name', 'groupChat:id,name'])
-            ->orderBy('created_at', 'desc')
-            ->get();
+        // Polymorphic filters for a specific file (document or image)
+        if ($request->filled('versionable_type')) {
+            $query->where('versionable_type', $request->query('versionable_type'));
+        }
+        if ($request->filled('versionable_id')) {
+            $query->where('versionable_id', $request->query('versionable_id'));
+        }
+        if ($request->filled('version')) {
+            $query->where('version', $request->query('version'));
+        }
+
+        // By default return only active notes unless caller sets active_only=false
+        $activeOnly = $request->boolean('active_only', true);
+        if ($activeOnly) {
+            $query->where('is_active', true);
+        }
+
+        $notes = $query->orderByDesc('created_at')->get();
 
         return response()->json($notes);
     }
