@@ -20,6 +20,9 @@ class Contribution extends Model
         'event_date',
         'event_location',
         'num_journalists',
+        'num_writers',
+        'num_photographers',
+        'department',
     ];
 
     protected $casts = [

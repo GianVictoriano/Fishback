@@ -32,7 +32,8 @@ class ArticleController extends Controller
     {
         $query = Article::with(['media', 'user'])
             ->where('status', 'published')
-            ->whereNotNull('published_at');
+            ->whereNotNull('published_at')
+            ->where('status', '!=', 'archived'); // Exclude archived articles
 
         if ($request->has('genre')) {
             $query->where('genre', $request->input('genre'));
@@ -41,6 +42,46 @@ class ArticleController extends Controller
         $articles = $query->orderBy('published_at', 'desc')->paginate(15);
 
         return ArticleResource::collection($articles);
+    }
+
+    public function debugFacebook()
+    {
+        try {
+            $pageAccessToken = env('FB_PAGE_ACCESS_TOKEN');
+            $pageId = env('FB_PAGE_ID');
+            
+            // Test Facebook API connection
+            $testResponse = Http::get("https://graph.facebook.com/{$pageId}?access_token={$pageAccessToken}");
+            
+            $debug = [
+                'fb_page_access_token_set' => !empty($pageAccessToken),
+                'fb_page_id' => $pageId,
+                'fb_api_test_status' => $testResponse->status(),
+                'fb_api_test_successful' => $testResponse->successful(),
+                'fb_api_test_response' => $testResponse->json()
+            ];
+            
+            // Test with a simple text post
+            $testMessage = "Test post from Fisherman app at " . now()->format('Y-m-d H:i:s');
+            $textPostResponse = Http::post("https://graph.facebook.com/{$pageId}/feed", [
+                'message' => $testMessage,
+                'access_token' => $pageAccessToken,
+            ]);
+            
+            $debug['text_post_test'] = [
+                'status' => $textPostResponse->status(),
+                'successful' => $textPostResponse->successful(),
+                'response' => $textPostResponse->json()
+            ];
+            
+            return response()->json($debug);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
+        }
     }
 
     public function store(Request $request)
@@ -136,6 +177,7 @@ class ArticleController extends Controller
         $trendingQuery = Article::with(['media', 'user', 'metrics'])
             ->where('status', 'published')
             ->whereNotNull('published_at')
+            ->where('status', '!=', 'archived') // Exclude archived articles
             ->whereDate('published_at', '>=', $threeDaysAgo);
         
         // Apply genre filter if provided
@@ -158,6 +200,7 @@ class ArticleController extends Controller
             $recentQuery = Article::with(['media', 'user', 'metrics'])
                 ->where('status', 'published')
                 ->whereNotNull('published_at')
+                ->where('status', '!=', 'archived') // Exclude archived articles
                 ->whereNotIn('id', $excludedIds);
             
             // Apply genre filter if provided
@@ -411,13 +454,103 @@ class ArticleController extends Controller
         ]);
     }
 
+    protected function handleExistingMedia($mediaPaths, Article $article)
+    {
+        if (!is_array($mediaPaths)) {
+            $mediaPaths = [$mediaPaths];
+        }
+
+        Log::info('handleExistingMedia called', [
+            'article_id' => $article->id,
+            'media_paths' => $mediaPaths
+        ]);
+
+        foreach ($mediaPaths as $index => $mediaPath) {
+            try {
+                Log::info("Processing existing media {$index}", [
+                    'media_path' => $mediaPath
+                ]);
+
+                // Check if the file exists in storage
+                $fullPath = Storage::disk('public')->path($mediaPath);
+                if (!Storage::disk('public')->exists($mediaPath)) {
+                    Log::warning("Existing media file not found: {$mediaPath}");
+                    continue;
+                }
+
+                // Get file info
+                $fileInfo = pathinfo($mediaPath);
+                $fileName = $fileInfo['basename'];
+                $fileExt = strtolower($fileInfo['extension'] ?? '');
+                
+                // Determine MIME type
+                $mimeType = $this->getMimeTypeFromExtension($fileExt);
+                
+                // Get file size
+                $size = Storage::disk('public')->size($mediaPath);
+
+                // Create media record
+                $media = $article->media()->create([
+                    'file_path' => $mediaPath,
+                    'file_name' => $fileName,
+                    'file_type' => $fileExt,
+                    'mime_type' => $mimeType,
+                    'size' => $size,
+                ]);
+                
+                Log::info('Existing media record created', [
+                    'media_id' => $media->id,
+                    'file_path' => $mediaPath
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::error('Error handling existing media: ' . $e->getMessage(), [
+                    'media_path' => $mediaPath,
+                    'trace' => $e->getTraceAsString()
+                ]);
+                continue;
+            }
+        }
+        
+        Log::info('handleExistingMedia completed', [
+            'article_id' => $article->id,
+            'total_media_count' => $article->media()->count()
+        ]);
+    }
+
+    protected function getMimeTypeFromExtension($extension)
+    {
+        $mimeTypes = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'pdf' => 'application/pdf',
+            'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+        
+        return $mimeTypes[strtolower($extension)] ?? 'application/octet-stream';
+    }
+
     protected function postToFacebook(Article $article)
     {
         $pageAccessToken = env('FB_PAGE_ACCESS_TOKEN');
         $pageId = env('FB_PAGE_ID');
         
+        Log::info('Starting Facebook post process', [
+            'article_id' => $article->id,
+            'has_page_token' => !empty($pageAccessToken),
+            'has_page_id' => !empty($pageId),
+            'page_id' => $pageId
+        ]);
+        
         if (!$pageAccessToken || !$pageId) {
-            Log::warning('Facebook credentials not configured');
+            Log::warning('Facebook credentials not configured', [
+                'article_id' => $article->id,
+                'fb_page_access_token_set' => !empty($pageAccessToken),
+                'fb_page_id_set' => !empty($pageId)
+            ]);
             return;
         }
 
@@ -452,11 +585,36 @@ class ArticleController extends Controller
         // Create the Facebook post message
         $message = $article->title . "\n\n" . $finalContent;
 
+        Log::info('Facebook message prepared', [
+            'article_id' => $article->id,
+            'title_length' => strlen($article->title),
+            'content_length' => strlen($finalContent),
+            'message_length' => strlen($message)
+        ]);
+
         // Get all images associated with the article
         $allMedia = $article->media()->where('mime_type', 'like', 'image/%')->orderBy('created_at', 'asc')->get();
         
+        Log::info('Retrieved article media for Facebook', [
+            'article_id' => $article->id,
+            'total_media_count' => $article->media()->count(),
+            'image_media_count' => $allMedia->count(),
+            'media_items' => $allMedia->map(function($media) {
+                return [
+                    'id' => $media->id,
+                    'file_path' => $media->file_path,
+                    'mime_type' => $media->mime_type,
+                    'size' => $media->size
+                ];
+            })->toArray()
+        ]);
+        
         if ($allMedia->isNotEmpty()) {
             // Post with multiple images - cover image first, then inline images
+            Log::info('Attempting to post with images to Facebook', [
+                'article_id' => $article->id,
+                'image_count' => $allMedia->count()
+            ]);
             $this->postMultipleImagesToFacebook($pageId, $pageAccessToken, $message, $allMedia, $article->id);
         } else {
             Log::info('No suitable image found, posting text only', [
@@ -471,58 +629,213 @@ class ArticleController extends Controller
     protected function postMultipleImagesToFacebook($pageId, $accessToken, $message, $mediaCollection, $articleId)
     {
         try {
-            // Prepare multiple images for upload
+            Log::info('Attempting to post multiple images to Facebook', [
+                'article_id' => $articleId,
+                'total_media_count' => $mediaCollection->count(),
+                'image_media_count' => $mediaCollection->where('mime_type', 'like', 'image/%')->count()
+            ]);
+
+            // If we have only one image, use the single photo endpoint
+            if ($mediaCollection->count() === 1) {
+                return $this->postSingleImageToFacebook($pageId, $accessToken, $message, $mediaCollection->first(), $articleId);
+            }
+
+            // For multiple images, we need to first upload them to an unpublished post
             $attachedImages = [];
             $uploadData = [
                 'message' => $message,
                 'access_token' => $accessToken,
+                'published' => false, // Create unpublished post first
             ];
             
-            // Attach all images (cover image first, then inline images in order)
+            // Attach all images
             foreach ($mediaCollection as $index => $media) {
                 $imagePath = Storage::disk('public')->path($media->file_path);
                 
+                Log::info("Checking image file", [
+                    'article_id' => $articleId,
+                    'file_path' => $media->file_path,
+                    'full_path' => $imagePath,
+                    'file_exists' => file_exists($imagePath)
+                ]);
+                
                 if (file_exists($imagePath)) {
-                    $imageData = file_get_contents($imagePath);
                     $imageName = basename($imagePath);
                     
-                    // Facebook API expects 'source[0]', 'source[1]', etc. for multiple photos
-                    $uploadData["source[$index]"] = $imageData;
-                    $attachedImages[] = $imageName;
+                    // Create a temporary file with proper extension
+                    $tempFile = tempnam(sys_get_temp_dir(), 'fb_image_' . $index . '_');
+                    $extension = pathinfo($imagePath, PATHINFO_EXTENSION) ?: 'jpg';
+                    $tempFileWithExt = $tempFile . '.' . $extension;
+                    rename($tempFile, $tempFileWithExt);
                     
-                    Log::info("Attached image for Facebook upload: {$imageName}", ['article_id' => $articleId]);
+                    // Copy image to temp file
+                    copy($imagePath, $tempFileWithExt);
+                    
+                    // Facebook API expects 'source[0]', 'source[1]', etc. for multiple photos
+                    $uploadData["source[$index]"] = fopen($tempFileWithExt, 'r');
+                    $attachedImages[] = [
+                        'name' => $imageName,
+                        'temp_file' => $tempFileWithExt
+                    ];
+                    
+                    Log::info("Attached image for Facebook upload: {$imageName}", [
+                        'article_id' => $articleId,
+                        'temp_file' => $tempFileWithExt,
+                        'file_size' => filesize($tempFileWithExt)
+                    ]);
                 } else {
-                    Log::warning("Image file not found: {$media->file_path}", ['article_id' => $articleId]);
+                    Log::warning("Image file not found: {$media->file_path}", [
+                        'article_id' => $articleId,
+                        'expected_path' => $imagePath
+                    ]);
                 }
             }
             
             if (!empty($attachedImages)) {
+                Log::info('Sending request to Facebook API', [
+                    'article_id' => $articleId,
+                    'endpoint' => "https://graph.facebook.com/{$pageId}/photos",
+                    'images_count' => count($attachedImages),
+                    'data_keys' => array_keys($uploadData)
+                ]);
+
                 // Post to Facebook with multiple photos
-                $response = Http::post("https://graph.facebook.com/{$pageId}/photos", $uploadData);
+                $response = Http::asMultipart()->post("https://graph.facebook.com/{$pageId}/photos", $uploadData);
+                
+                // Clean up temp files
+                foreach ($attachedImages as $index => $imageInfo) {
+                    if (isset($uploadData["source[$index]"])) {
+                        fclose($uploadData["source[$index]"]);
+                    }
+                    if (isset($imageInfo['temp_file']) && file_exists($imageInfo['temp_file'])) {
+                        unlink($imageInfo['temp_file']);
+                    }
+                }
+                
+                Log::info('Facebook API response received', [
+                    'article_id' => $articleId,
+                    'status' => $response->status(),
+                    'successful' => $response->successful(),
+                    'response_body' => $response->body()
+                ]);
                 
                 if ($response->successful()) {
                     Log::info('Article posted to Facebook with multiple images', [
                         'article_id' => $articleId,
                         'images_count' => count($attachedImages),
-                        'images' => $attachedImages
+                        'images' => array_column($attachedImages, 'name')
                     ]);
                 } else {
                     Log::error('Failed to post to Facebook with multiple images', [
                         'article_id' => $articleId,
+                        'status' => $response->status(),
                         'response' => $response->body()
                     ]);
-                    // Fallback to text-only post
-                    $this->postTextToFacebook($pageId, $accessToken, $message, $articleId);
+                    
+                    // Try fallback: post first image only
+                    if ($mediaCollection->isNotEmpty()) {
+                        Log::info('Trying fallback: posting first image only', ['article_id' => $articleId]);
+                        $this->postSingleImageToFacebook($pageId, $accessToken, $message, $mediaCollection->first(), $articleId);
+                    } else {
+                        // Final fallback to text-only post
+                        $this->postTextToFacebook($pageId, $accessToken, $message, $articleId);
+                    }
                 }
             } else {
-                // No valid images found, fallback to text-only
+                Log::warning('No valid images found for Facebook post', ['article_id' => $articleId]);
+                // Fallback to text-only
                 $this->postTextToFacebook($pageId, $accessToken, $message, $articleId);
             }
             
         } catch (\Exception $e) {
             Log::error('Error posting multiple images to Facebook', [
                 'article_id' => $articleId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // Fallback to text-only post
+            $this->postTextToFacebook($pageId, $accessToken, $message, $articleId);
+        }
+    }
+
+    protected function postSingleImageToFacebook($pageId, $accessToken, $message, $media, $articleId)
+    {
+        try {
+            $imagePath = Storage::disk('public')->path($media->file_path);
+            
+            Log::info("Posting single image to Facebook", [
+                'article_id' => $articleId,
+                'file_path' => $media->file_path,
+                'full_path' => $imagePath,
+                'file_exists' => file_exists($imagePath)
+            ]);
+            
+            if (file_exists($imagePath)) {
+                $imageName = basename($imagePath);
+                
+                // Create a temporary file with proper extension
+                $tempFile = tempnam(sys_get_temp_dir(), 'fb_image_');
+                $extension = pathinfo($imagePath, PATHINFO_EXTENSION) ?: 'jpg';
+                $tempFileWithExt = $tempFile . '.' . $extension;
+                rename($tempFile, $tempFileWithExt);
+                
+                // Copy image to temp file
+                copy($imagePath, $tempFileWithExt);
+                
+                $uploadData = [
+                    'message' => $message,
+                    'source' => fopen($tempFileWithExt, 'r'),
+                    'access_token' => $accessToken,
+                ];
+                
+                Log::info('Sending single image to Facebook API', [
+                    'article_id' => $articleId,
+                    'image_name' => $imageName,
+                    'temp_file' => $tempFileWithExt,
+                    'file_size' => filesize($tempFileWithExt)
+                ]);
+                
+                $response = Http::asMultipart()->post("https://graph.facebook.com/{$pageId}/photos", $uploadData);
+                
+                // Clean up temp file
+                fclose($uploadData['source']);
+                unlink($tempFileWithExt);
+                
+                Log::info('Facebook single image API response', [
+                    'article_id' => $articleId,
+                    'status' => $response->status(),
+                    'successful' => $response->successful(),
+                    'response_body' => $response->body()
+                ]);
+                
+                if ($response->successful()) {
+                    Log::info('Article posted to Facebook with single image', [
+                        'article_id' => $articleId,
+                        'image' => $imageName
+                    ]);
+                } else {
+                    Log::error('Failed to post single image to Facebook', [
+                        'article_id' => $articleId,
+                        'status' => $response->status(),
+                        'response' => $response->body()
+                    ]);
+                    // Fallback to text-only post
+                    $this->postTextToFacebook($pageId, $accessToken, $message, $articleId);
+                }
+            } else {
+                Log::warning("Single image file not found: {$media->file_path}", [
+                    'article_id' => $articleId,
+                    'expected_path' => $imagePath
+                ]);
+                // Fallback to text-only post
+                $this->postTextToFacebook($pageId, $accessToken, $message, $articleId);
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Error posting single image to Facebook', [
+                'article_id' => $articleId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             // Fallback to text-only post
             $this->postTextToFacebook($pageId, $accessToken, $message, $articleId);
@@ -1084,6 +1397,7 @@ class ArticleController extends Controller
         try {
             $articles = Article::with(['media', 'user', 'featured'])
                 ->where('status', 'published')
+                ->where('status', '!=', 'archived') // Exclude archived articles
                 ->whereHas('featured')
                 ->orderByDesc(
                     Article::select('featured_at')

@@ -95,6 +95,7 @@ class RecommendationEngine
         $query = Article::with(['media', 'user', 'metrics'])
             ->where('status', 'published')
             ->whereNotNull('published_at')
+            ->where('status', '!=', 'archived') // Exclude archived articles
             ->whereNotIn('id', $readArticleIds);
 
         // Score articles based on user's genre preferences
@@ -157,6 +158,7 @@ class RecommendationEngine
             ->whereNotIn('id', $readArticleIds)
             ->where('status', 'published')
             ->whereNotNull('published_at')
+            ->where('status', '!=', 'archived') // Exclude archived articles
             ->withCount(['preferences as popularity_score' => function($query) use ($similarUsers) {
                 $query->whereIn('user_id', $similarUsers)
                       ->whereIn('interaction_type', ['like', 'heart', 'wow']);
@@ -253,6 +255,7 @@ class RecommendationEngine
         return Article::with(['media', 'user', 'metrics'])
             ->where('status', 'published')
             ->whereNotNull('published_at')
+            ->where('status', '!=', 'archived') // Exclude archived articles
             ->leftJoin('article_metrics', 'articles.id', '=', 'article_metrics.article_id')
             ->orderByRaw('COALESCE(article_metrics.visits, 0) + COALESCE(article_metrics.like_count, 0) * 2 DESC')
             ->select('articles.*')

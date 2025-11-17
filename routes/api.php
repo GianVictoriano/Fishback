@@ -41,6 +41,9 @@ Route::get('/ping', function () {
 });
 Route::get('/branding', [BrandingController::class, 'index']);
 
+// Debug Facebook posting
+Route::get('/debug-facebook', [ArticleController::class, 'debugFacebook']);
+
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);

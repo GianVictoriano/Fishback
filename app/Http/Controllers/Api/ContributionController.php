@@ -28,7 +28,9 @@ class ContributionController extends Controller
             // Coverage-specific fields
             'event_date' => $request->category === 'coverage' ? 'required|date' : 'nullable|date',
             'event_location' => $request->category === 'coverage' ? 'required|string|max:255' : 'nullable|string|max:255',
-            'num_journalists' => $request->category === 'coverage' ? 'required|integer|min:1' : 'nullable|integer|min:1',
+            'num_writers' => $request->category === 'coverage' ? 'required|integer|min:1' : 'nullable|integer|min:1',
+            'num_photographers' => $request->category === 'coverage' ? 'required|integer|min:0' : 'nullable|integer|min:0',
+            'department' => $request->category === 'coverage' ? 'required|string|max:255' : 'nullable|string|max:255',
         ]);
 
         // Prepare base data
@@ -43,7 +45,9 @@ class ContributionController extends Controller
         if ($validated['category'] === 'coverage') {
             $data['event_date'] = $validated['event_date'];
             $data['event_location'] = $validated['event_location'];
-            $data['num_journalists'] = $validated['num_journalists'];
+            $data['num_writers'] = $validated['num_writers'];
+            $data['num_photographers'] = $validated['num_photographers'];
+            $data['department'] = $validated['department'];
         }
 
         // Handle according to category/type
