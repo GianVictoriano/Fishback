@@ -132,7 +132,11 @@ class ReviewContentController extends Controller
                   ->orWhereNull('is_folio_submission');
             });
 
-            $reviewContents = $query->with(['user:id,name', 'group:id,name'])->orderByDesc('uploaded_at')->get();
+            $limit = min((int) $request->input('limit', 25), 100);
+            $reviewContents = $query
+                ->with(['user:id,name', 'group:id,name'])
+                ->orderByDesc('uploaded_at')
+                ->paginate($limit);
 
             return response()->json($reviewContents);
 

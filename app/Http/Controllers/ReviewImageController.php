@@ -211,7 +211,11 @@ class ReviewImageController extends Controller
               ->orWhereNull('is_folio_submission');
         });
         
-        $images = $query->with(['user:id,name', 'group:id,name,status'])->orderByDesc('uploaded_at')->get();
+        $limit = min((int) $request->input('limit', 25), 100);
+        $images = $query
+            ->with(['user:id,name', 'group:id,name,status'])
+            ->orderByDesc('uploaded_at')
+            ->paginate($limit);
         return response()->json($images);
     }
 }

@@ -84,7 +84,9 @@ Route::get('/users', [UserController::class, 'index']);
 Route::get('/users/{id}', [UserController::class, 'show']);
 Route::get('/users/{userId}/bookmarks', [ArticleBookmarkController::class, 'getUserBookmarks']);
 Route::get('/public/articles', [ArticleController::class, 'publicArticles']);
+Route::get('/public/article-summaries', [ArticleController::class, 'publicArticleSummaries']);
 Route::get('/public/trending-articles', [ArticleController::class, 'trendingArticles']);
+Route::get('/public/featured-articles', [ArticleController::class, 'publicFeaturedArticles']);
 Route::get('/public/articles/{article}', [ArticleController::class, 'show']);
 Route::post('/public/articles/{article}/react', [ArticleController::class, 'react']);
 Route::post('/public/articles/{article}/visit', [ArticleController::class, 'visit']);
@@ -129,7 +131,6 @@ Route::middleware('force.api.auth')->group(function () {
     
     // Media Management
     Route::get('/media/articles', [ArticleController::class, 'getMediaArticles']);
-    Route::put('/articles/{article}/update', [ArticleController::class, 'updateArticle']);
     Route::patch('/articles/{article}/archive', [ArticleController::class, 'toggleArchive']);
     Route::patch('/articles/{article}/feature', [ArticleController::class, 'toggleFeatured']);
     Route::get('/articles/featured', [ArticleController::class, 'getFeaturedArticles']);

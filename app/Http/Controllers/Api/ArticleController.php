@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreArticleRequest;
 use App\Http\Resources\ArticleResource;
+use App\Http\Resources\ArticleSummaryResource;
 use App\Models\Article;
 use App\Models\Featured;
 use App\Services\RecommendationEngine;
@@ -26,6 +27,24 @@ class ArticleController extends Controller
             ->paginate(10);
 
         return ArticleResource::collection($articles);
+    }
+
+    public function publicArticleSummaries(Request $request)
+    {
+        $query = Article::with(['media:id,article_id,file_path'])
+            ->where('status', 'published')
+            ->whereNotNull('published_at')
+            ->where('status', '!=', 'archived');
+
+        if ($request->has('genre')) {
+            $query->where('genre', $request->input('genre'));
+        }
+
+        // Limit results to reduce payload; front-end paginates client side.
+        $limit = $request->input('limit', 40);
+        $articles = $query->orderBy('published_at', 'desc')->take($limit)->get();
+
+        return ArticleSummaryResource::collection($articles);
     }
 
     public function publicArticles(Request $request)
@@ -90,7 +109,7 @@ class ArticleController extends Controller
             $validated = $request->validate([
                 'title' => 'required|string|max:255',
                 'content' => 'required|string',
-                'genre' => 'required|in:articles,opinions,sports,editorial,artworks',
+                'genre' => 'required|in:articles,opinions,sports,editorial,artworks,creative',
                 'media' => 'nullable|array',
                 'media.*' => 'file|mimes:jpg,jpeg,png,gif,pdf,doc,docx|max:10240',
                 'existing_media' => 'nullable|array',
@@ -1262,7 +1281,7 @@ class ArticleController extends Controller
     /**
      * Update article (edit)
      */
-    public function updateArticle(Request $request, Article $article)
+    public function update(Request $request, Article $article)
     {
         try {
             // Check if user owns the article
@@ -1273,7 +1292,7 @@ class ArticleController extends Controller
             $validated = $request->validate([
                 'title' => 'required|string|max:255',
                 'content' => 'required|string',
-                'genre' => 'required|in:articles,opinions,sports,editorial,artworks',
+                'genre' => 'required|in:articles,opinions,sports,editorial,artworks,creative',
                 'status' => 'required|in:draft,published,archived',
             ]);
 
@@ -1410,6 +1429,31 @@ class ArticleController extends Controller
             return ArticleResource::collection($articles);
         } catch (\Exception $e) {
             Log::error('Error fetching featured articles: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch featured articles'], 500);
+        }
+    }
+
+    /**
+     * Get public featured articles
+     */
+    public function publicFeaturedArticles(Request $request)
+    {
+        try {
+            $articles = Article::with(['media', 'user'])
+                ->where('status', 'published')
+                ->where('status', '!=', 'archived') // Exclude archived articles
+                ->whereHas('featured')
+                ->orderByDesc(
+                    Article::select('featured_at')
+                        ->from('featured')
+                        ->whereColumn('featured.article_id', 'articles.id')
+                        ->limit(1)
+                )
+                ->paginate(15);
+
+            return ArticleResource::collection($articles);
+        } catch (\Exception $e) {
+            Log::error('Error fetching public featured articles: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to fetch featured articles'], 500);
         }
     }
