@@ -128,6 +128,7 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/upload-media', [ArticleController::class, 'uploadMedia']);
     Route::get('/dashboard-stats', [ArticleController::class, 'getDashboardStats']);
     Route::get('/contributors', [ArticleController::class, 'getAllContributors']);
+    Route::get('/graph-data', [ArticleController::class, 'getGraphData']);
     
     // Media Management
     Route::get('/media/articles', [ArticleController::class, 'getMediaArticles']);
