@@ -1,5 +1,5 @@
 <?php
-//facebook api 
+//facebook api developer mode pa toh
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;

@@ -1,76 +1,191 @@
 <?php
-//check api
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\PlagiarismResult;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
+use App\Events\PlagiarismCheckCompleted;
 
 class PlagController extends Controller
 {
-    public function check(Request $request)
+    private $winstonApiKey;
+
+    public function __construct()
     {
-        $email = env('COPYLEAKS_EMAIL');
-        $apiKey = env('COPYLEAKS_API_KEY');
-
-        // authentication (need sa api, di toh sa auth may separate na authen ang copy)
-        $authResponse = Http::post('https://id.copyleaks.com/v3/account/login/api', [
-            'email' => $email,
-            'key' => $apiKey,
-        ]);
-
-        Log::info('Payload:', ['email' => $email, 'key' => $apiKey]);
-        Log::info('Copyleaks Auth Response: ' . $authResponse->body()); 
-
-        if ($authResponse->failed()) {
-            return response()->json([
-                'error' => 'Authentication with Copyleaks failed.',
-                'copyleaks_response' => $authResponse->json(),
-            ], 401);
-        }
-
-        $accessToken = $authResponse->json()['access_token'];
-        Log::info("Access Token: $accessToken");
-        // submit na sa api
-        $text = $request->input('text', 'Hello world!');
-        $scanId = uniqid('scan_');
-
-        $submissionUrl = "https://api.copyleaks.com/v3/scans/submit/file/$scanId";
-
-        $submitResponse = Http::withToken($accessToken)->put($submissionUrl, [
-            'base64' => base64_encode($text),
-            'filename' => 'file.txt',
-            'properties' => [
-                'sandbox' => true,
-                'webhooks' => [
-                    'status' => 'https://9758-2001-fd8-cb75-6b00-5599-6390-d2b1-3f1a.ngrok-free.app/api/copyleaks/webhook/' . $scanId
-                ]
-            ]
-        ]);
-        //logs toh kasi ayaw makisama
-        Log::info('Copyleaks Submission Status: ' . $submitResponse->status());
-        Log::info('Copyleaks Submission Body: ' . $submitResponse->body());
-
-        if ($submitResponse->failed()) {
-            return response()->json([
-                'error' => 'Submission failed',
-                'copyleaks_response' => $submitResponse->json(),
-            ], 500);
-        }
-
-        return response()->json([
-            'message' => 'Text submitted for plagiarism check',
-            'scan_id' => $scanId,
-        ]);
+        $this->winstonApiKey = env('WINSTON_API_KEY');
+    
+        // This setup for Copyleaks API interaction is assumed based on previous context.
+        // You might need to adjust it based on your actual Copyleaks SDK or client.
     }
-    //pag kuha ng output mula api
-        public function webhook(Request $request, $scanId)
-        {
-            Log::info("✅ Webhook received for scan ID: $scanId", [
-                'payload' => $request->all()
-            ]);
 
-            return response()->json(['message' => 'Webhook received']);
+    /**
+     * Submits text for a plagiarism scan.
+     */
+    public function submitScan(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:txt,pdf,doc,docx,rtf,ppt,pptx,xls,xlsx|max:51200',
+        ]); // url upload removed, only file allowed
+
+        $user = Auth::user();
+        $scanId = Str::uuid();
+
+        PlagiarismResult::create([
+            'user_id' => $user->id,
+            'scan_id' => $scanId,
+            'status' => 'pending',
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'pdf') {
+                // PDF extraction
+                try {
+                    $parser = new \Smalot\PdfParser\Parser();
+                    $pdf = $parser->parseFile($file->getRealPath());
+                    $text = $pdf->getText();
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Failed to extract text from PDF: ' . $e->getMessage()], 400);
+                }
+            } elseif (in_array($ext, ['doc', 'docx'])) {
+                // DOC/DOCX extraction
+                try {
+                    $phpWord = \PhpOffice\PhpWord\IOFactory::load($file->getRealPath());
+                    $text = '';
+                    foreach ($phpWord->getSections() as $section) {
+                        $elements = $section->getElements();
+                        foreach ($elements as $element) {
+                            if (method_exists($element, 'getText')) {
+                                $text .= $element->getText() . "\n";
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Failed to extract text from DOC/DOCX: ' . $e->getMessage()], 400);
+                }
+            } else {
+                // Default: treat as plain text
+                $text = file_get_contents($file->getRealPath());
+            }
+            if (mb_strlen($text) < 100) {
+                return response()->json(['error' => 'Text must be at least 100 characters for Winston MCP.'], 400);
+            }
+            $payload = [
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'method' => 'tools/call',
+                'params' => [
+                    'name' => 'plagiarism-detection',
+                    'arguments' => [
+                        'text' => $text,
+                        'apiKey' => $this->winstonApiKey,
+                    ]
+                ]
+            ];
+            Log::info('Winston MCP API payload', ['payload' => $payload]);
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])->post('https://api.gowinston.ai/mcp/v1', $payload);
+            Log::info('Winston MCP API response', ['response' => $response->json()]);
+            if ($response->successful() && isset($response['result']['content'][0]['text'])) {
+                $resultText = $response['result']['content'][0]['text'];
+
+                // Find the start of the JSON object, as the API includes a text prefix.
+                $jsonStart = strpos($resultText, '{');
+
+                if ($jsonStart !== false) {
+                    $jsonString = substr($resultText, $jsonStart);
+                    $decodedResult = json_decode($jsonString, true);
+
+                    if (json_last_error() === JSON_ERROR_NONE) {
+                        // Save decoded result to DB
+                        PlagiarismResult::where('scan_id', $scanId)->update([
+                            'status' => 'completed',
+                            'result' => $decodedResult,
+                        ]);
+
+                        // Return the structured result
+                        return response()->json([
+                            'scan_id' => $scanId,
+                            'result' => $decodedResult,
+                        ]);
+                    } else {
+                        // Handle JSON decoding error
+                        PlagiarismResult::where('scan_id', $scanId)->update(['status' => 'failed']);
+                        Log::error('Winston MCP JSON decode failed', ['raw_result' => $resultText]);
+                        return response()->json(['error' => 'Failed to parse plagiarism result from Winston MCP.'], 500);
+                    }
+                } else {
+                    // Could not find the start of the JSON object in the response string
+                    PlagiarismResult::where('scan_id', $scanId)->update(['status' => 'failed']);
+                    Log::error('Winston MCP response did not contain a JSON object.', ['raw_result' => $resultText]);
+                    return response()->json(['error' => 'Invalid response format from plagiarism service.'], 500);
+                }
+            } else {
+                PlagiarismResult::where('scan_id', $scanId)->update(['status' => 'failed']);
+                Log::error('Winston MCP submission failed', ['response' => $response->json()]);
+                return response()->json(['error' => 'Failed to get plagiarism result from Winston MCP.'], 500);
+            }
+        } catch (\Exception $e) {
+            PlagiarismResult::where('scan_id', $scanId)->update(['status' => 'failed']);
+            Log::error('Winston submission failed: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to submit for plagiarism check.'], 500);
+        }
+    }
+
+
+
+    /**
+     * Handles the webhook callback from Winston AI.
+     */
+    public function webhook(Request $request)
+    {
+        Log::info('Winston webhook received:', $request->all());
+
+        $scanId = $request->input('scan_id');
+        $resultData = $request->json()->all();
+
+        if ($scanId) {
+            $plagiarismResult = PlagiarismResult::where('scan_id', $scanId)->first();
+
+            if ($plagiarismResult) {
+                $plagiarismResult->update([
+                    'status' => 'completed',
+                    'result' => $resultData, // Store the full webhook payload
+                ]);
+                Log::info("Plagiarism result for scan {$scanId} saved successfully.");
+            } else {
+                Log::warning("Received webhook for unknown scan ID: {$scanId}");
+            }
         }
 
+        return response()->json(['status' => 'success']);
+    }
+
+    public function checkStatus($scanId)
+    {
+        $result = PlagiarismResult::where('scan_id', $scanId)->firstOrFail();
+
+        // Ensure the authenticated user is the one who requested the scan
+        if (Auth::id() !== $result->user_id) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $data = $result->toArray();
+        // If result is a string, decode it before sending to the frontend
+        if (isset($data['result']) && is_string($data['result'])) {
+            $decoded = json_decode($data['result'], true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $data['result'] = $decoded;
+            }
+        }
+
+        return response()->json($data);
+    }
 }

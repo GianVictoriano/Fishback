@@ -7,12 +7,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use App\Notifications\Auth\CustomResetPasswordNotification;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
-    use HasApiTokens, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     /**
      * The attributes that are mass assignable.
@@ -23,7 +22,9 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'google_id',
     ];
+    
 
     /**
      * The attributes that should be hidden for serialization.
@@ -47,4 +48,52 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function articles()
+    {
+        return $this->hasMany(Article::class);
+    }
+
+    public function profile()
+    {
+        return $this->hasOne(Profile::class);
+    }
+
+    /**
+     * Send the password reset notification.
+     *
+     * @param  string  $token
+     * @return void
+     */
+    public function sendPasswordResetNotification($token)
+    {
+        $this->notify(new CustomResetPasswordNotification($token));
+    }
+
+    /**
+     * The group chats that the user is a member of.
+     */
+    public function groupChats()
+    {
+        return $this->belongsToMany(GroupChat::class, 'group_chat_members', 'user_id', 'group_chat_id');
+    }
+
+    /**
+     * The activities created by the user.
+     */
+    public function createdActivities()
+    {
+        return $this->hasMany(Activity::class, 'created_by');
+    }
+
+    /**
+     * The activities that the user is a member of.
+     */
+    public function activities()
+    {
+        return $this->belongsToMany(Activity::class, 'activity_members')
+            ->withPivot('status', 'notes')
+            ->withTimestamps();
+    }
 }
+
