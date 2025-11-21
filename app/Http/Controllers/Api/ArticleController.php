@@ -58,7 +58,18 @@ class ArticleController extends Controller
             $query->where('genre', $request->input('genre'));
         }
 
-        $articles = $query->orderBy('published_at', 'desc')->paginate(15);
+        // Handle sort parameter
+        $sort = $request->input('sort', 'published_at:desc');
+        if ($sort) {
+            [$column, $direction] = explode(':', $sort) + [null, 'desc'];
+            if (in_array($column, ['published_at', 'created_at', 'title']) && in_array($direction, ['asc', 'desc'])) {
+                $query->orderBy($column, $direction);
+            } else {
+                $query->orderBy('published_at', 'desc');
+            }
+        }
+
+        $articles = $query->paginate(15);
 
         return ArticleResource::collection($articles);
     }
@@ -863,187 +874,37 @@ class ArticleController extends Controller
 
     protected function postTextToFacebook($pageId, $accessToken, $message, $articleId)
     {
-        $response = Http::post("https://graph.facebook.com/{$pageId}/feed", [
-            'message' => $message,
-            'access_token' => $accessToken,
-        ]);
-        
-        Log::info('Article posted to Facebook (text only)', ['article_id' => $articleId]);
-    }
-
-    public function getDashboardStats(Request $request)
-    {
-        $user = $request->user();
-        
-        // Get user's group chats
-        $userGroupChats = $user->groupChats()->with('scrumBoard', 'folio')->get();
-        
-        Log::info('Dashboard stats for user', [
-            'user_id' => $user->id,
-            'total_group_chats' => $userGroupChats->count(),
-            'group_chats' => $userGroupChats->pluck('id')->toArray()
-        ]);
-        
-        // Initialize counters
-        $pendingTasks = 0;
-        $inReview = 0;
-        $approved = 0;
-        
-        foreach ($userGroupChats as $groupChat) {
-            // Use the track column for simple status determination
-            $track = $groupChat->track ?? 'pending';
-            
-            Log::info('Processing group chat', [
-                'group_chat_id' => $groupChat->id,
-                'track' => $track
-            ]);
-            
-            if ($track === 'approved') {
-                $approved++;
-            } elseif ($track === 'review') {
-                $inReview++;
-            } else {
-                // 'pending' or null
-                $pendingTasks++;
-            }
-        }
-        
-        // Active Projects: Total group chats user is part of
-        $activeProjects = $userGroupChats->count();
-        
-        Log::info('Final dashboard stats', [
-            'user_id' => $user->id,
-            'pending_tasks' => $pendingTasks,
-            'in_review' => $inReview,
-            'approved' => $approved,
-            'active_projects' => $activeProjects
-        ]);
-        
-        // Get upcoming activities for the user
-        $upcomingActivities = \App\Models\Activity::where('date', '>=', now())
-            ->whereHas('members', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
-            })
-            ->with(['creator'])
-            ->orderBy('date', 'asc')
-            ->limit(5)
-            ->get()
-            ->map(function ($activity) {
-                return [
-                    'id' => $activity->id,
-                    'title' => $activity->title,
-                    'date' => $activity->date->format('M d, Y'),
-                    'time' => $activity->date->format('h:i A'),
-                    'location' => $activity->location,
-                    'creator' => $activity->creator->name,
-                ];
-            });
-
-        // Get top contributors (most involved in group chats) for last 30 days
-        Log::info('Fetching top contributors...');
-        
         try {
-            // Let's check what group chats exist and their dates
-            $allGroupChats = \App\Models\GroupChat::all();
-            Log::info('All group chats in database', [
-                'total' => $allGroupChats->count(),
-                'chats' => $allGroupChats->map(function($chat) {
-                    return [
-                        'id' => $chat->id,
-                        'name' => $chat->name,
-                        'created_at' => $chat->created_at->toDateTimeString(),
-                        'updated_at' => $chat->updated_at->toDateTimeString(),
-                    ];
-                })->toArray()
+            Log::info('Posting text-only to Facebook', ['article_id' => $articleId]);
+            
+            $response = Http::post("https://graph.facebook.com/{$pageId}/feed", [
+                'message' => $message,
+                'access_token' => $accessToken,
             ]);
             
-            // Check all users with group chats (no date filter first)
-            $allUsersWithChats = \App\Models\User::whereHas('groupChats')
-                ->with(['profile'])
-                ->withCount(['groupChats'])
-                ->orderBy('group_chats_count', 'desc')
-                ->limit(5)
-                ->get();
-            
-            Log::info('Top 5 users by total group chats', [
-                'count' => $allUsersWithChats->count(),
-                'users' => $allUsersWithChats->map(function($user) {
-                    return [
-                        'id' => $user->id,
-                        'name' => $user->profile ? $user->profile->name : $user->name,
-                        'email' => $user->email,
-                        'group_chats_count' => $user->group_chats_count,
-                    ];
-                })->toArray()
+            Log::info('Facebook text post response', [
+                'article_id' => $articleId,
+                'status' => $response->status(),
+                'successful' => $response->successful(),
+                'response' => $response->body()
             ]);
             
-            // Process top contributors - use track column for simple status
-            $topContributors = $allUsersWithChats->map(function ($user) {
-                Log::info('Processing user for stats', ['user_id' => $user->id, 'name' => $user->profile ? $user->profile->name : $user->name]);
-                
-                // Get ALL user's group chats (no date filter for dashboard)
-                $userGroupChats = $user->groupChats()->get();
-                
-                Log::info('User group chats (all)', [
-                    'user_id' => $user->id,
-                    'total_chats' => $userGroupChats->count(),
-                    'chat_ids' => $userGroupChats->pluck('id')->toArray()
+            if ($response->successful()) {
+                Log::info('Article posted to Facebook as text-only', ['article_id' => $articleId]);
+            } else {
+                Log::error('Failed to post text to Facebook', [
+                    'article_id' => $articleId,
+                    'status' => $response->status(),
+                    'response' => $response->body()
                 ]);
-                
-                $approvedCount = 0;
-                $pendingCount = 0;
-                $inReviewCount = 0;
-                
-                // Use track column for status determination
-                foreach ($userGroupChats as $groupChat) {
-                    $track = $groupChat->track ?? 'pending';
-                    
-                    if ($track === 'approved') {
-                        $approvedCount++;
-                    } elseif ($track === 'review') {
-                        $inReviewCount++;
-                    } else {
-                        $pendingCount++;
-                    }
-                }
-                
-                $result = [
-                    'id' => $user->id,
-                    'name' => $user->profile ? $user->profile->name : $user->name,
-                    'email' => $user->email,
-                    'total_assigned' => $userGroupChats->count(),
-                    'approved' => $approvedCount,
-                    'pending' => $pendingCount,
-                    'in_review' => $inReviewCount,
-                    'avatar' => $user->profile ? $user->profile->avatar : null,
-                ];
-                
-                Log::info('Final user stats', $result);
-                
-                return $result;
-            });
-            
-            Log::info('Final contributors list', [
-                'count' => $topContributors->count(),
-                'contributors' => $topContributors->toArray()
-            ]);
-            
+            }
         } catch (\Exception $e) {
-            Log::error('Error fetching top contributors', [
+            Log::error('Error posting text to Facebook', [
+                'article_id' => $articleId,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            $topContributors = collect([]);
         }
-
-        return response()->json([
-            'pending_tasks' => $pendingTasks,
-            'in_review' => $inReview,
-            'approved' => $approved,
-            'active_projects' => $activeProjects,
-            'upcoming_activities' => $upcomingActivities,
-            'top_contributors' => $topContributors,
-        ]);
     }
 
     public function getAllContributors(Request $request)
@@ -1196,16 +1057,16 @@ class ArticleController extends Controller
                     ]);
                     
                     // Return safe fallback data
-                    return [
-                        'id' => $user->id,
-                        'name' => $user->profile ? $user->profile->name : $user->name,
-                        'email' => $user->email,
-                        'total_assigned' => 0,
-                        'approved' => 0,
-                        'pending' => 0,
-                        'in_review' => 0,
-                        'avatar' => $user->profile ? $user->profile->avatar : null,
-                    ];
+                    return response()->json([
+                        'content_submissions' => [],
+                        'article_publications' => [],
+                        'group_chat_status' => [
+                            'approved' => 0,
+                            'pending' => 0,
+                            'in_review' => 0,
+                        ],
+                        'activity_status' => [],
+                    ]);
                 }
             });
             
@@ -1459,23 +1320,299 @@ class ArticleController extends Controller
     }
 
     /**
-     * Delete article
+     * Get graph data for dashboard charts
      */
-    public function deleteArticle(Request $request, Article $article)
+    public function getGraphData(Request $request)
     {
         try {
-            // Check if user owns the article
-            if ($article->user_id !== $request->user()->id) {
-                return response()->json(['message' => 'Unauthorized'], 403);
+            $user = $request->user();
+            
+            // Get submissions for the last 8 days (current day + 7 previous)
+            $startDate = now()->subDays(7)->startOfDay();
+            $endDate = now()->endOfDay();
+            
+            // Get all dates in the range
+            $dateRange = [];
+            $currentDate = $startDate->copy();
+            while ($currentDate <= $endDate) {
+                $dateRange[] = $currentDate->format('Y-m-d');
+                $currentDate->addDay();
             }
-
-            // Soft delete
-            $article->delete();
-
-            return response()->json(['message' => 'Article deleted successfully']);
+            
+            // Content submissions over time (review_content and review_images)
+            $contentSubmissions = DB::table('review_content')
+                ->join('group_chats', 'review_content.group_id', '=', 'group_chats.id')
+                ->join('group_chat_members', 'group_chats.id', '=', 'group_chat_members.group_chat_id')
+                ->where('group_chat_members.user_id', $user->id)
+                ->where('review_content.uploaded_at', '>=', $startDate)
+                ->where('review_content.uploaded_at', '<=', $endDate)
+                ->selectRaw('DATE(review_content.uploaded_at) as date, COUNT(*) as count')
+                ->groupBy('date')
+                ->get()
+                ->keyBy('date');
+                
+            $imageSubmissions = DB::table('review_images')
+                ->join('group_chats', 'review_images.group_id', '=', 'group_chats.id')
+                ->join('group_chat_members', 'group_chats.id', '=', 'group_chat_members.group_chat_id')
+                ->where('group_chat_members.user_id', $user->id)
+                ->where('review_images.uploaded_at', '>=', $startDate)
+                ->where('review_images.uploaded_at', '<=', $endDate)
+                ->selectRaw('DATE(review_images.uploaded_at) as date, COUNT(*) as count')
+                ->groupBy('date')
+                ->get()
+                ->keyBy('date');
+                
+            // Combine submissions for each date in the range
+            $submissionsData = collect($dateRange)->map(function($date) use ($contentSubmissions, $imageSubmissions) {
+                $contentCount = $contentSubmissions->get($date)->count ?? 0;
+                $imageCount = $imageSubmissions->get($date)->count ?? 0;
+                $totalCount = $contentCount + $imageCount;
+                
+                return [
+                    'date' => $date,
+                    'count' => $totalCount
+                ];
+            })->filter(function($item) {
+                // Keep all dates, even with zero counts, for proper time series
+                return true;
+            });
+            
+            // Group Chat Status Distribution (pie chart) - ALL projects
+            $allGroupChats = \App\Models\GroupChat::all();
+            
+            $groupChatStatusData = [
+                'approved' => 0,
+                'in_review' => 0,
+                'pending' => 0,
+            ];
+            
+            foreach ($allGroupChats as $groupChat) {
+                $track = $groupChat->track ?? 'pending';
+                
+                if ($track === 'approved') {
+                    $groupChatStatusData['approved']++;
+                } elseif ($track === 'review') {
+                    $groupChatStatusData['in_review']++;
+                } else {
+                    $groupChatStatusData['pending']++;
+                }
+            }
+            
+            // Article Publications - Most Viewed by Genre (bar chart)
+            $articlePublications = \App\Models\Article::where('status', 'published')
+                ->whereNotNull('genre')
+                ->selectRaw('genre, COUNT(*) as article_count, SUM(COALESCE(article_metrics.visits, 0)) as total_views')
+                ->leftJoin('article_metrics', 'articles.id', '=', 'article_metrics.article_id')
+                ->groupBy('genre')
+                ->orderBy('total_views', 'desc')
+                ->get()
+                ->map(function($item) {
+                    return [
+                        'genre' => $item->genre,
+                        'count' => $item->total_views,
+                        'article_count' => $item->article_count
+                    ];
+                });
+            
+            return response()->json([
+                'content_submissions' => $submissionsData,
+                'article_publications' => $articlePublications,
+                'group_chat_status' => $groupChatStatusData,
+                'activity_status' => [],
+            ]);
         } catch (\Exception $e) {
-            Log::error('Error deleting article: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to delete article'], 500);
+            Log::error('Graph data error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user() ? $request->user()->id : 'guest'
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to load graph data',
+                'message' => $e->getMessage()
+            ], 500);
         }
+    }
+
+    /**
+     * Get dashboard statistics for the authenticated user
+     */
+    public function getDashboardStats(Request $request)
+    {
+        $user = $request->user();
+        
+        // Get user's group chats
+        $userGroupChats = $user->groupChats()->with('scrumBoard', 'folio')->get();
+        
+        Log::info('Dashboard stats for user', [
+            'user_id' => $user->id,
+            'total_group_chats' => $userGroupChats->count(),
+            'group_chats' => $userGroupChats->pluck('id')->toArray()
+        ]);
+        
+        // Initialize counters
+        $pendingTasks = 0;
+        $inReview = 0;
+        $approved = 0;
+        
+        foreach ($userGroupChats as $groupChat) {
+            // Use the track column for simple status determination
+            $track = $groupChat->track ?? 'pending';
+            
+            Log::info('Processing group chat', [
+                'group_chat_id' => $groupChat->id,
+                'track' => $track
+            ]);
+            
+            if ($track === 'approved') {
+                $approved++;
+            } elseif ($track === 'review') {
+                $inReview++;
+            } else {
+                // 'pending' or null
+                $pendingTasks++;
+            }
+        }
+        
+        // Active Projects: Total group chats user is part of
+        $activeProjects = $userGroupChats->count();
+        
+        Log::info('Final dashboard stats', [
+            'user_id' => $user->id,
+            'pending_tasks' => $pendingTasks,
+            'in_review' => $inReview,
+            'approved' => $approved,
+            'active_projects' => $activeProjects
+        ]);
+        
+        // Get upcoming activities for the user
+        $upcomingActivities = \App\Models\Activity::where('date', '>=', now())
+            ->whereHas('members', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->with(['creator'])
+            ->orderBy('date', 'asc')
+            ->limit(5)
+            ->get()
+            ->map(function ($activity) {
+                return [
+                    'id' => $activity->id,
+                    'title' => $activity->title,
+                    'date' => $activity->date->format('M d, Y'),
+                    'time' => $activity->date->format('h:i A'),
+                    'location' => $activity->location,
+                    'creator' => $activity->creator->name,
+                ];
+            });
+
+        // Get top contributors (most involved in group chats) for last 30 days
+        Log::info('Fetching top contributors...');
+        
+        try {
+            // Let's check what group chats exist and their dates
+            $allGroupChats = \App\Models\GroupChat::all();
+            Log::info('All group chats in database', [
+                'total' => $allGroupChats->count(),
+                'chats' => $allGroupChats->map(function($chat) {
+                    return [
+                        'id' => $chat->id,
+                        'name' => $chat->name,
+                        'created_at' => $chat->created_at->toDateTimeString(),
+                        'updated_at' => $chat->updated_at->toDateTimeString(),
+                    ];
+                })->toArray()
+            ]);
+            
+            // Check all users with group chats (no date filter first)
+            $allUsersWithChats = \App\Models\User::whereHas('groupChats')
+                ->with(['profile'])
+                ->withCount(['groupChats'])
+                ->orderBy('group_chats_count', 'desc')
+                ->limit(5)
+                ->get();
+            
+            Log::info('Top 5 users by total group chats', [
+                'count' => $allUsersWithChats->count(),
+                'users' => $allUsersWithChats->map(function($user) {
+                    return [
+                        'id' => $user->id,
+                        'name' => $user->profile ? $user->profile->name : $user->name,
+                        'group_chats_count' => $user->group_chats_count,
+                    ];
+                })->toArray()
+            ]);
+            
+            // Process top contributors - use track column for simple status
+            $topContributors = $allUsersWithChats->map(function ($user) {
+                Log::info('Processing user for stats', ['user_id' => $user->id, 'name' => $user->profile ? $user->profile->name : $user->name]);
+                
+                // Get ALL user's group chats (no date filter for dashboard)
+                $userGroupChats = $user->groupChats()->get();
+                
+                Log::info('User group chats (all)', [
+                    'user_id' => $user->id,
+                    'total_chats' => $userGroupChats->count(),
+                    'chat_ids' => $userGroupChats->pluck('id')->toArray()
+                ]);
+                
+                $approvedCount = 0;
+                $pendingCount = 0;
+                $inReviewCount = 0;
+                
+                // Use track column for status determination
+                foreach ($userGroupChats as $groupChat) {
+                    $track = $groupChat->track ?? 'pending';
+                    
+                    Log::info('Processing group chat for user', [
+                        'user_id' => $user->id,
+                        'group_chat_id' => $groupChat->id,
+                        'track' => $track
+                    ]);
+                    
+                    if ($track === 'approved') {
+                        $approvedCount++;
+                    } elseif ($track === 'review') {
+                        $inReviewCount++;
+                    } else {
+                        $pendingCount++;
+                    }
+                }
+                
+                $result = [
+                    'id' => $user->id,
+                    'name' => $user->profile ? $user->profile->name : $user->name,
+                    'email' => $user->email,
+                    'total_assigned' => $userGroupChats->count(),
+                    'approved' => $approvedCount,
+                    'pending' => $pendingCount,
+                    'in_review' => $inReviewCount,
+                    'avatar' => $user->profile ? $user->profile->avatar : null,
+                ];
+                
+                Log::info('Final user stats', $result);
+                
+                return $result;
+            });
+            
+            Log::info('Final contributors list', [
+                'count' => $topContributors->count(),
+                'contributors' => $topContributors->toArray()
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching top contributors', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            $topContributors = collect([]);
+        }
+
+        return response()->json([
+            'pending_tasks' => $pendingTasks,
+            'in_review' => $inReview,
+            'approved' => $approved,
+            'active_projects' => $activeProjects,
+            'upcoming_activities' => $upcomingActivities,
+            'top_contributors' => $topContributors,
+        ]);
     }
 }

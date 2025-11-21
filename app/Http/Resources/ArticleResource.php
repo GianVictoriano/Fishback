@@ -18,7 +18,14 @@ class ArticleResource extends JsonResource
         $image = null;
         if ($this->media && $this->media->count() > 0) {
             $firstMedia = $this->media->first();
-            $image = '/storage/' . str_replace('public/', '', $firstMedia->file_path);
+            $relativePath = 'storage/' . str_replace('public/', '', $firstMedia->file_path);
+            $baseUrl = $request->getSchemeAndHttpHost() ?: config('app.url');
+
+            if ($baseUrl) {
+                $image = rtrim($baseUrl, '/') . '/' . ltrim($relativePath, '/');
+            } else {
+                $image = asset($relativePath);
+            }
         }
 
         return array_merge(parent::toArray($request), [
@@ -30,11 +37,11 @@ class ArticleResource extends JsonResource
                 'name' => $this->user->name ?? 'Unknown',
             ],
             'metrics' => [
-                'visits' => $this->metrics->visits ?? 0,
-                'like_count' => $this->metrics->like_count ?? 0,
-                'heart_count' => $this->metrics->heart_count ?? 0,
-                'sad_count' => $this->metrics->sad_count ?? 0,
-                'wow_count' => $this->metrics->wow_count ?? 0,
+                'visits' => $this->metrics?->visits ?? 0,
+                'like_count' => $this->metrics?->like_count ?? 0,
+                'heart_count' => $this->metrics?->heart_count ?? 0,
+                'sad_count' => $this->metrics?->sad_count ?? 0,
+                'wow_count' => $this->metrics?->wow_count ?? 0,
             ],
         ]);
     }
