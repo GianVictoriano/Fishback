@@ -250,4 +250,8 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'store']);
     Route::get('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'index']);
     Route::get('/literary-works/{id}', [App\Http\Controllers\Api\LiteraryWorkController::class, 'show']);
+
+    // Submissions (Artwork, Literature, Photography)
+    Route::apiResource('submissions', App\Http\Controllers\SubmissionController::class);
+    Route::get('/my-submissions', [App\Http\Controllers\SubmissionController::class, 'mySubmissions']);
 });
