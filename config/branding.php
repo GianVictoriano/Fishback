@@ -9,7 +9,7 @@ return array (
   ),
   'colors' => 
   array (
-    'primary' => '#131754',
+    'primary' => '#080b28',
     'secondary' => '#202444',
     'tertiary' => '#3949ab',
     'accent' => '#10B981',
