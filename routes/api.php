@@ -91,6 +91,7 @@ Route::get('/public/articles/{article}', [ArticleController::class, 'show']);
 Route::post('/public/articles/{article}/react', [ArticleController::class, 'react']);
 Route::post('/public/articles/{article}/visit', [ArticleController::class, 'visit']);
 Route::get('/public/recommendations', [ArticleController::class, 'recommendations']);
+Route::get('/public/activity-data', [ArticleController::class, 'getActivityData']);
 
 // Protected routes
 Route::middleware('force.api.auth')->group(function () {

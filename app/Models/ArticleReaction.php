@@ -12,4 +12,14 @@ class ArticleReaction extends Model
         'ip_address',
         'reaction_type',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function article()
+    {
+        return $this->belongsTo(Article::class);
+    }
 }
