@@ -200,7 +200,7 @@ class ArticleController extends Controller
     public function trendingArticles(Request $request)
     {
         $threeDaysAgo = now()->subDays(3);
-        $limit = 10;
+        $limit = 25; // Updated to match frontend expectations
         $genre = $request->query('genre');
 
         // First, get trending articles from the last 3 days
@@ -907,191 +907,209 @@ class ArticleController extends Controller
         }
     }
 
-    public function getAllContributors(Request $request)
+    public function getActivityData(Request $request)
     {
         try {
+            $limit = $request->input('limit', 50);
+            $filter = $request->input('filter', 'all');
             $search = $request->input('search', '');
-            $timeframe = $request->input('timeframe', '30'); // days
-            $role = $request->input('role', 'all');
-            
-            Log::info('Fetching all contributors', [
-                'search' => $search,
-                'timeframe' => $timeframe,
-                'role' => $role
-            ]);
-            
-            // Get all users with group chats first (no date filtering in query)
-            $query = \App\Models\User::whereHas('groupChats')
-                ->with(['profile'])
-                ->withCount(['groupChats']);
-            
-            // We'll filter by date during processing to avoid SQL errors
-            $cutoffDate = now()->subDays((int)$timeframe);
-            
-            Log::info('Setting up timeframe filtering', [
-                'timeframe' => $timeframe,
-                'cutoff_date' => $cutoffDate->toDateTimeString()
-            ]);
-            
-            // Apply search filter
-            if ($search) {
-                $query->where(function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
-                });
-            }
-            
-            // Apply role filter
-            if ($role !== 'all') {
-                $query->whereHas('profile', function($profileQuery) use ($role) {
-                    $profileQuery->where('role', $role);
-                });
-            }
-            
-            $contributors = $query->orderBy('group_chats_count', 'desc')
-                ->paginate(20);
-            
-            Log::info('Initial query results', [
-                'total' => $contributors->total(),
-                'count' => $contributors->count(),
-                'users' => $contributors->getCollection()->map(function($user) {
-                    return [
-                        'id' => $user->id,
-                        'name' => $user->profile ? $user->profile->name : $user->name,
-                        'group_chats_count' => $user->group_chats_count,
+
+            $activities = [];
+
+            // 1. Article creation/publishing activities
+            $articleQuery = \App\Models\Article::with(['user', 'user.profile'])
+                ->where('status', 'published')
+                ->whereNotNull('published_at')
+                ->orderBy('published_at', 'desc')
+                ->limit(20);
+
+            if ($filter === 'content' || $filter === 'all') {
+                $articles = $articleQuery->get();
+                foreach ($articles as $article) {
+                    $activities[] = [
+                        'id' => 'article_' . $article->id,
+                        'user_name' => $article->user->profile->name ?? $article->user->name ?? 'Unknown User',
+                        'type' => 'create',
+                        'description' => 'published article "' . $article->title . '"',
+                        'timestamp' => $this->getTimeAgo($article->published_at),
+                        'details' => 'Article ID: ' . $article->id,
+                        'created_at' => $article->published_at
                     ];
-                })->toArray()
-            ]);
-            
-            // Process each contributor to add detailed stats
-            $processedContributors = $contributors->getCollection()->map(function ($user) use ($timeframe, $cutoffDate) {
-                try {
-                    Log::info('Processing user', [
-                        'user_id' => $user->id,
-                        'user_name' => $user->profile ? $user->profile->name : $user->name,
-                        'group_chats_count_from_query' => $user->group_chats_count
-                    ]);
-                    
-                    // Use direct DB query to count group chats - more reliable
-                    $totalAssigned = DB::table('group_chat_members')
-                        ->where('user_id', $user->id)
-                        ->count();
-                    
-                    // Get group chat IDs for this user
-                    $groupChatIds = DB::table('group_chat_members')
-                        ->where('user_id', $user->id)
-                        ->pluck('group_chat_id')
-                        ->toArray();
-                    
-                    // Get group chats within timeframe
-                    $filteredGroupChatIds = DB::table('group_chats')
-                        ->whereIn('id', $groupChatIds)
-                        ->where('updated_at', '>=', $cutoffDate)
-                        ->pluck('id')
-                        ->toArray();
-                    
-                    Log::info('User group chat counts (DB query)', [
-                        'user_id' => $user->id,
-                        'user_name' => $user->profile ? $user->profile->name : $user->name,
-                        'all_chats' => $totalAssigned,
-                        'filtered_chats' => count($filteredGroupChatIds),
-                        'timeframe' => $timeframe,
-                        'group_chat_ids' => $groupChatIds,
-                        'filtered_ids' => $filteredGroupChatIds
-                    ]);
-                    
-                    // Get the actual group chat models for status calculation
-                    $filteredGroupChats = \App\Models\GroupChat::whereIn('id', $filteredGroupChatIds)
-                        ->with('folio')
-                        ->get();
-                    
-                    // Calculate status counts from filtered group chats
-                    $approvedCount = 0;
-                    $pendingCount = 0;
-                    $inReviewCount = 0;
-                    
-                    Log::info('User group chats retrieved', [
-                        'user_id' => $user->id,
-                        'count' => $filteredGroupChats->count(),
-                        'chat_ids' => $filteredGroupChats->pluck('id')->toArray()
-                    ]);
-                    
-                    foreach ($filteredGroupChats as $groupChat) {
-                        // Use the new track column for simple status determination
-                        $track = $groupChat->track ?? 'pending';
-                        
-                        Log::info('Processing group chat for user', [
-                            'user_id' => $user->id,
-                            'group_chat_id' => $groupChat->id,
-                            'track' => $track
-                        ]);
-                        
-                        if ($track === 'approved') {
-                            $approvedCount++;
-                        } elseif ($track === 'review') {
-                            $inReviewCount++;
-                        } else {
-                            $pendingCount++;
-                        }
-                    }
-                    
-                    $result = [
-                        'id' => $user->id,
-                        'name' => $user->profile ? $user->profile->name : $user->name,
-                        'email' => $user->email,
-                        'total_assigned' => count($filteredGroupChats), // Use filtered count for timeframe
-                        'approved' => $approvedCount,
-                        'pending' => $pendingCount,
-                        'in_review' => $inReviewCount,
-                        'avatar' => $user->profile ? $user->profile->avatar : null,
-                    ];
-                    
-                    Log::info('User result', $result);
-                    
-                    return $result;
-                    
-                } catch (\Exception $e) {
-                    Log::error('Error processing user stats', [
-                        'user_id' => $user->id,
-                        'error' => $e->getMessage()
-                    ]);
-                    
-                    // Return safe fallback data
-                    return response()->json([
-                        'content_submissions' => [],
-                        'article_publications' => [],
-                        'group_chat_status' => [
-                            'approved' => 0,
-                            'pending' => 0,
-                            'in_review' => 0,
-                        ],
-                        'activity_status' => [],
-                    ]);
                 }
+            }
+
+            // 2. Article reactions (likes, hearts, etc.)
+            if ($filter === 'user' || $filter === 'all') {
+                $reactions = \App\Models\ArticleReaction::with(['user', 'user.profile', 'article'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(15)
+                    ->get();
+
+                foreach ($reactions as $reaction) {
+                    if ($reaction->user) {
+                        $activities[] = [
+                            'id' => 'reaction_' . $reaction->id,
+                            'user_name' => $reaction->user->profile->name ?? $reaction->user->name ?? 'Unknown User',
+                            'type' => 'comment',
+                            'description' => 'reacted with ' . $reaction->reaction_type . ' to "' . ($reaction->article->title ?? 'an article') . '"',
+                            'timestamp' => $this->getTimeAgo($reaction->created_at),
+                            'details' => null,
+                            'created_at' => $reaction->created_at
+                        ];
+                    }
+                }
+            }
+
+            // 3. Chat messages
+            if ($filter === 'user' || $filter === 'all') {
+                $chatMessages = \App\Models\ChatMessage::with(['user', 'user.profile', 'groupChat'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(15)
+                    ->get();
+
+                foreach ($chatMessages as $message) {
+                    if ($message->user) {
+                        $activities[] = [
+                            'id' => 'chat_' . $message->id,
+                            'user_name' => $message->user->profile->name ?? $message->user->name ?? 'Unknown User',
+                            'type' => 'comment',
+                            'description' => 'sent a message in "' . ($message->groupChat->name ?? 'a group chat') . '"',
+                            'timestamp' => $this->getTimeAgo($message->created_at),
+                            'details' => null,
+                            'created_at' => $message->created_at
+                        ];
+                    }
+                }
+            }
+
+            // 4. Content reviews
+            if ($filter === 'content' || $filter === 'all') {
+                $reviews = \App\Models\ReviewContent::with(['user', 'user.profile', 'group'])
+                    ->orderBy('uploaded_at', 'desc')
+                    ->limit(10)
+                    ->get();
+
+                foreach ($reviews as $review) {
+                    $statusAction = $review->status === 'approved' ? 'approved' : ($review->status === 'rejected' ? 'rejected' : 'submitted');
+                    $activities[] = [
+                        'id' => 'review_' . $review->id,
+                        'user_name' => $review->user->profile->name ?? $review->user->name ?? 'Unknown User',
+                        'type' => 'update',
+                        'description' => $statusAction . ' content review in "' . ($review->group->name ?? 'a group') . '"',
+                        'timestamp' => $this->getTimeAgo($review->uploaded_at),
+                        'details' => 'Status: ' . $review->status,
+                        'created_at' => $review->uploaded_at
+                    ];
+                }
+            }
+
+            // 5. Applications
+            if ($filter === 'user' || $filter === 'all') {
+                $applications = \App\Models\Applicant::orderBy('created_at', 'desc')
+                    ->limit(10)
+                    ->get();
+
+                foreach ($applications as $application) {
+                    $activities[] = [
+                        'id' => 'application_' . $application->id,
+                        'user_name' => $application->full_name,
+                        'type' => 'create',
+                        'description' => 'submitted a collaborator application',
+                        'timestamp' => $this->getTimeAgo($application->created_at),
+                        'details' => 'Status: ' . ($application->status ?? 'pending'),
+                        'created_at' => $application->created_at
+                    ];
+                }
+            }
+
+            // 6. Topic creation (Forum)
+            if ($filter === 'content' || $filter === 'all') {
+                $topics = \App\Models\Topic::with(['user', 'user.profile'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(10)
+                    ->get();
+
+                foreach ($topics as $topic) {
+                    $activities[] = [
+                        'id' => 'topic_' . $topic->id,
+                        'user_name' => $topic->user->profile->name ?? $topic->user->name ?? 'Unknown User',
+                        'type' => 'create',
+                        'description' => 'created forum topic "' . $topic->title . '"',
+                        'timestamp' => $this->getTimeAgo($topic->created_at),
+                        'details' => null,
+                        'created_at' => $topic->created_at
+                    ];
+                }
+            }
+
+            // 7. Comments (Forum)
+            if ($filter === 'user' || $filter === 'all') {
+                $comments = \App\Models\Comment::with(['user', 'user.profile', 'topic'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(15)
+                    ->get();
+
+                foreach ($comments as $comment) {
+                    $activities[] = [
+                        'id' => 'comment_' . $comment->id,
+                        'user_name' => $comment->user->profile->name ?? $comment->user->name ?? 'Unknown User',
+                        'type' => 'comment',
+                        'description' => 'commented on "' . ($comment->topic->title ?? 'a topic') . '"',
+                        'timestamp' => $this->getTimeAgo($comment->created_at),
+                        'details' => null,
+                        'created_at' => $comment->created_at
+                    ];
+                }
+            }
+
+            // Sort all activities by timestamp (most recent first)
+            usort($activities, function($a, $b) {
+                return strtotime($b['created_at']) - strtotime($a['created_at']);
             });
-            
-            // Replace the collection with processed data
-            $contributors->setCollection($processedContributors);
-            
-            Log::info('All contributors fetched successfully', [
-                'timeframe' => $timeframe,
-                'total' => $contributors->total(),
-                'count' => $contributors->count()
-            ]);
-            
-            return response()->json($contributors);
-            
-        } catch (\Exception $e) {
-            Log::error('Error in getAllContributors', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
+
+            // Apply search filter
+            if (!empty($search)) {
+                $activities = array_filter($activities, function($activity) use ($search) {
+                    return stripos($activity['user_name'], $search) !== false ||
+                           stripos($activity['description'], $search) !== false;
+                });
+            }
+
+            // Limit results
+            $activities = array_slice($activities, 0, $limit);
+
             return response()->json([
-                'error' => 'Failed to fetch contributors',
-                'message' => $e->getMessage()
+                'success' => true,
+                'data' => $activities,
+                'total' => count($activities)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching activity data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch activity data',
+                'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function getTimeAgo($timestamp)
+    {
+        $now = \Carbon\Carbon::now();
+        $past = \Carbon\Carbon::parse($timestamp);
+        $diffInSeconds = $now->diffInSeconds($past);
+
+        if ($diffInSeconds < 60) return 'just now';
+        if ($diffInSeconds < 3600) return floor($diffInSeconds / 60) . 'm ago';
+
+        $hours = floor($diffInSeconds / 3600);
+        if ($hours < 24) return $hours . 'h ago';
+
+        $days = floor($diffInSeconds / 86400);
+        if ($days < 7) return $days . 'd ago';
+
+        return $past->format('M d, Y');
     }
 
     /**
