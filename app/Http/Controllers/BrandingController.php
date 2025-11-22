@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BrandingHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -36,6 +37,8 @@ class BrandingController extends Controller
      */
     public function update(Request $request)
     {
+        $user = $request->user();
+
         $request->validate([
             'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'background' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:4096',
@@ -44,18 +47,45 @@ class BrandingController extends Controller
             'pages' => 'nullable|array',
         ]);
 
+        $changes = [];
+
         // Handle file uploads (logo and background)
         if ($request->hasFile('logo')) {
+            $oldPath = DB::table('branding_settings')->where('key', 'logo_path')->value('value');
             $this->updateSetting('logo_path', $request->file('logo'));
+            $changes['logo_path'] = ['old' => $oldPath, 'new' => DB::table('branding_settings')->where('key', 'logo_path')->value('value')];
         }
 
         if ($request->hasFile('background')) {
+            $oldPath = DB::table('branding_settings')->where('key', 'background_path')->value('value');
             $this->updateSetting('background_path', $request->file('background'));
+            $changes['background_path'] = ['old' => $oldPath, 'new' => DB::table('branding_settings')->where('key', 'background_path')->value('value')];
         }
 
         // Handle config file updates (colors, fonts, pages)
         if ($request->has('typography') || $request->has('colors') || $request->has('pages')) {
+            $oldConfig = config('branding', []);
             $this->updateConfigFile($request);
+            $newConfig = config('branding', []);
+            $changes = array_merge($changes, $this->getConfigChanges($oldConfig, $newConfig, $request));
+        }
+
+        // Log the changes
+        if (!empty($changes)) {
+            \Log::info('Attempting to save branding history', [
+                'user_id' => $user->id,
+                'action' => 'updated',
+                'changes_count' => count($changes),
+                'changes' => $changes
+            ]);
+            \DB::table('branding_history')->insert([
+                'user_id' => $user->id,
+                'action' => 'updated',
+                'changes' => json_encode($changes),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            \Log::info('Branding history saved successfully');
         }
 
         return response()->json(['message' => 'Branding updated successfully.']);
@@ -128,10 +158,48 @@ class BrandingController extends Controller
     }
 
     /**
+     * Get changes between old and new config based on request
+     */
+    private function getConfigChanges($oldConfig, $newConfig, Request $request)
+    {
+        $changes = [];
+
+        if ($request->has('typography')) {
+            foreach ($request->typography as $key => $value) {
+                if (($oldConfig['typography'][$key] ?? null) !== $value) {
+                    $changes['typography'][$key] = ['old' => $oldConfig['typography'][$key] ?? null, 'new' => $value];
+                }
+            }
+        }
+
+        if ($request->has('colors')) {
+            foreach ($request->colors as $key => $value) {
+                if (($oldConfig['colors'][$key] ?? null) !== $value) {
+                    $changes['colors'][$key] = ['old' => $oldConfig['colors'][$key] ?? null, 'new' => $value];
+                }
+            }
+        }
+
+        if ($request->has('pages')) {
+            foreach ($request->pages as $page => $settings) {
+                foreach ($settings as $key => $value) {
+                    if (($oldConfig['pages'][$page][$key] ?? null) !== $value) {
+                        $changes['pages'][$page][$key] = ['old' => $oldConfig['pages'][$page][$key] ?? null, 'new' => $value];
+                    }
+                }
+            }
+        }
+
+        return $changes;
+    }
+
+    /**
      * Reset branding to default values
      */
     public function reset()
     {
+        $user = auth()->user();
+
         // Define default branding configuration
         $defaultConfig = [
             'typography' => [
@@ -205,6 +273,15 @@ class BrandingController extends Controller
 
         // Optionally, you can also clear logo and background from database
         // DB::table('branding_settings')->truncate();
+
+        // Log the reset
+        \DB::table('branding_history')->insert([
+            'user_id' => $user->id,
+            'action' => 'reset',
+            'changes' => json_encode(['reset_to_default' => true]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         return response()->json([
             'message' => 'Branding reset to default successfully.',

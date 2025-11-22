@@ -35,6 +35,6 @@ class Profile extends Model
      */
     public function modules()
     {
-        return $this->belongsToMany(Module::class, 'profile_module');
+        return $this->belongsToMany(Module::class, 'profile_module')->withTimestamps();
     }
 }
