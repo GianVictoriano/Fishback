@@ -67,7 +67,35 @@ class ModuleController extends Controller
             'modules.*' => 'integer|exists:modules,id',
         ]);
 
-        $profile->modules()->sync($request->modules);
+        $newModuleIds = $request->modules;
+        $currentModuleIds = $profile->modules()->pluck('modules.id')->toArray();
+
+        // Find modules to assign (new ones)
+        $toAssign = array_diff($newModuleIds, $currentModuleIds);
+
+        // Find modules to remove (old ones not in new)
+        $toRemove = array_diff($currentModuleIds, $newModuleIds);
+
+        // Log assignments
+        foreach ($toAssign as $moduleId) {
+            \App\Models\ProfileModuleHistory::create([
+                'profile_id' => $profile->id,
+                'module_id' => $moduleId,
+                'action' => 'assigned',
+            ]);
+        }
+
+        // Log removals
+        foreach ($toRemove as $moduleId) {
+            \App\Models\ProfileModuleHistory::create([
+                'profile_id' => $profile->id,
+                'module_id' => $moduleId,
+                'action' => 'removed',
+            ]);
+        }
+
+        // Update the current modules
+        $profile->modules()->sync($newModuleIds);
 
         return response()->json(['message' => 'Modules updated successfully']);
     }
