@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Notifications\Auth\CustomResetPasswordNotification;
+use App\Models\WorkingHour;
 
 class User extends Authenticatable
 {
@@ -94,6 +95,11 @@ class User extends Authenticatable
         return $this->belongsToMany(Activity::class, 'activity_members')
             ->withPivot('status', 'notes')
             ->withTimestamps();
+    }
+
+    public function workingHours()
+    {
+        return $this->hasMany(WorkingHour::class);
     }
 }
 
