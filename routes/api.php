@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\FolioController;
 use App\Http\Controllers\ImportantNoteController;
 use App\Http\Controllers\Api\CoverageRequestController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Api\DocumentApprovalController;
 
 /*
 |--------------------------------------------------------------------------
@@ -246,6 +247,9 @@ Route::middleware('force.api.auth')->group(function () {
 
     // Dashboard Statistics
     Route::get('/dashboard/statistics', [DashboardController::class, 'getStatistics']);
+
+    // Document Approval Tracking
+    Route::get('/document-approval/workflow', [DocumentApprovalController::class, 'getWorkflow']);
 
     // Literary Works (Heyzine Integration)
     Route::post('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'store']);
