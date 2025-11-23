@@ -28,7 +28,7 @@ use App\Http\Controllers\Api\FolioController;
 use App\Http\Controllers\ImportantNoteController;
 use App\Http\Controllers\Api\CoverageRequestController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\Api\DocumentApprovalController;
+use App\Http\Controllers\WorkingHourController;
 
 /*
 |--------------------------------------------------------------------------
@@ -249,6 +249,11 @@ Route::middleware('force.api.auth')->group(function () {
 
     // Dashboard Statistics
     Route::get('/dashboard/statistics', [DashboardController::class, 'getStatistics']);
+
+    // Working Hours
+    Route::get('/working-hours', [WorkingHourController::class, 'index']);
+    Route::get('/working-hours/me', [WorkingHourController::class, 'show']);
+    Route::post('/working-hours', [WorkingHourController::class, 'store']);
 
     // Document Approval Tracking
     Route::get('/document-approval/workflow', [DocumentApprovalController::class, 'getWorkflow']);
