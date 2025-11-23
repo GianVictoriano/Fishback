@@ -73,8 +73,25 @@ class WorkingHourController extends Controller
             'working_hours.*.possible_end_time' => 'nullable|date_format:H:i',
         ]);
 
-        $user = Auth::user();
+        // Additional validation to ensure start times are before end times
         $workingHoursData = $request->input('working_hours');
+        foreach ($workingHoursData as $data) {
+            if ($data['preferred_start_time'] && $data['preferred_end_time'] && 
+                $data['preferred_start_time'] >= $data['preferred_end_time']) {
+                return response()->json([
+                    'message' => 'Preferred start time must be before preferred end time for ' . $data['day_of_week']
+                ], 422);
+            }
+            
+            if ($data['possible_start_time'] && $data['possible_end_time'] && 
+                $data['possible_start_time'] >= $data['possible_end_time']) {
+                return response()->json([
+                    'message' => 'Possible start time must be before possible end time for ' . $data['day_of_week']
+                ], 422);
+            }
+        }
+
+        $user = Auth::user();
 
         foreach ($workingHoursData as $data) {
             // Create a new entry for each time slot instead of updating existing ones
