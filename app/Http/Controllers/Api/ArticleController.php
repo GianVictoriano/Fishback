@@ -940,9 +940,19 @@ class ArticleController extends Controller
 
             // 2. Article reactions (likes, hearts, etc.)
             if ($filter === 'user' || $filter === 'all') {
-                $reactions = \App\Models\ArticleReaction::with(['user', 'user.profile', 'article'])
+                $reactions = \App\Models\ArticleReaction::with([
+                    'user' => function($query) {
+                        $query->select('id', 'name');
+                    },
+                    'user.profile' => function($query) {
+                        $query->select('user_id', 'name');
+                    },
+                    'article' => function($query) {
+                        $query->select('id', 'title');
+                    }
+                ])
                     ->orderBy('created_at', 'desc')
-                    ->limit(15)
+                    ->limit(10)  // Reduced from 15 to 10 for faster loading
                     ->get();
 
                 foreach ($reactions as $reaction) {
@@ -960,25 +970,22 @@ class ArticleController extends Controller
                 }
             }
 
-            // 3. Chat messages
+            // 3. Applications
             if ($filter === 'user' || $filter === 'all') {
-                $chatMessages = \App\Models\ChatMessage::with(['user', 'user.profile', 'groupChat'])
-                    ->orderBy('created_at', 'desc')
-                    ->limit(15)
+                $applications = \App\Models\Applicant::orderBy('created_at', 'desc')
+                    ->limit(10)
                     ->get();
 
-                foreach ($chatMessages as $message) {
-                    if ($message->user) {
-                        $activities[] = [
-                            'id' => 'chat_' . $message->id,
-                            'user_name' => $message->user->profile->name ?? $message->user->name ?? 'Unknown User',
-                            'type' => 'comment',
-                            'description' => 'sent a message in "' . ($message->groupChat->name ?? 'a group chat') . '"',
-                            'timestamp' => $this->getTimeAgo($message->created_at),
-                            'details' => null,
-                            'created_at' => $message->created_at
-                        ];
-                    }
+                foreach ($applications as $application) {
+                    $activities[] = [
+                        'id' => 'application_' . $application->id,
+                        'user_name' => $application->full_name,
+                        'type' => 'create',
+                        'description' => 'submitted a collaborator application',
+                        'timestamp' => $this->getTimeAgo($application->created_at),
+                        'details' => 'Status: ' . ($application->status ?? 'pending'),
+                        'created_at' => $application->created_at
+                    ];
                 }
             }
 
@@ -1003,26 +1010,7 @@ class ArticleController extends Controller
                 }
             }
 
-            // 5. Applications
-            if ($filter === 'user' || $filter === 'all') {
-                $applications = \App\Models\Applicant::orderBy('created_at', 'desc')
-                    ->limit(10)
-                    ->get();
-
-                foreach ($applications as $application) {
-                    $activities[] = [
-                        'id' => 'application_' . $application->id,
-                        'user_name' => $application->full_name,
-                        'type' => 'create',
-                        'description' => 'submitted a collaborator application',
-                        'timestamp' => $this->getTimeAgo($application->created_at),
-                        'details' => 'Status: ' . ($application->status ?? 'pending'),
-                        'created_at' => $application->created_at
-                    ];
-                }
-            }
-
-            // 6. Topic creation (Forum)
+            // 5. Topic creation (Forum)
             if ($filter === 'publishing' || $filter === 'all') {
                 $topics = \App\Models\Topic::with(['user', 'user.profile'])
                     ->orderBy('created_at', 'desc')
@@ -1038,26 +1026,6 @@ class ArticleController extends Controller
                         'timestamp' => $this->getTimeAgo($topic->created_at),
                         'details' => null,
                         'created_at' => $topic->created_at
-                    ];
-                }
-            }
-
-            // 7. Comments (Forum)
-            if ($filter === 'user' || $filter === 'all') {
-                $comments = \App\Models\Comment::with(['user', 'user.profile', 'topic'])
-                    ->orderBy('created_at', 'desc')
-                    ->limit(15)
-                    ->get();
-
-                foreach ($comments as $comment) {
-                    $activities[] = [
-                        'id' => 'comment_' . $comment->id,
-                        'user_name' => $comment->user->profile->name ?? $comment->user->name ?? 'Unknown User',
-                        'type' => 'comment',
-                        'description' => 'commented on "' . ($comment->topic->title ?? 'a topic') . '"',
-                        'timestamp' => $this->getTimeAgo($comment->created_at),
-                        'details' => null,
-                        'created_at' => $comment->created_at
                     ];
                 }
             }
@@ -1684,6 +1652,33 @@ class ArticleController extends Controller
             $topContributors = collect([]);
         }
 
+        // Get group chat timeline based on deadlines
+        $groupChatTimeline = \App\Models\GroupChat::whereHas('members', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->whereHas('scrumBoard', function ($query) {
+                $query->whereNotNull('deadline');
+            })
+            ->with(['scrumBoard.leadReviewer', 'members.profile'])
+            ->orderBy('scrum_boards.deadline', 'asc')
+            ->join('scrum_boards', 'group_chats.scrum_board_id', '=', 'scrum_boards.id')
+            ->select('group_chats.*', 'scrum_boards.deadline', 'scrum_boards.title', 'scrum_boards.lead_reviewer_id')
+            ->get()
+            ->map(function ($groupChat) {
+                $leadReviewer = $groupChat->scrumBoard ? $groupChat->scrumBoard->leadReviewer : null;
+                $membersCount = $groupChat->members->count();
+                
+                return [
+                    'id' => $groupChat->id,
+                    'name' => $groupChat->name,
+                    'deadline' => $groupChat->deadline ? \Carbon\Carbon::parse($groupChat->deadline)->format('M d, Y') : null,
+                    'deadline_raw' => $groupChat->deadline,
+                    'lead_reviewer' => $leadReviewer ? ($leadReviewer->profile->name ?? $leadReviewer->name) : 'Not assigned',
+                    'members_count' => $membersCount,
+                    'status' => $groupChat->track ?? 'pending',
+                ];
+            });
+
         return response()->json([
             'pending_tasks' => $pendingTasks,
             'in_review' => $inReview,
@@ -1691,7 +1686,70 @@ class ArticleController extends Controller
             'active_projects' => $activeProjects,
             'upcoming_activities' => $upcomingActivities,
             'top_contributors' => $topContributors,
+            'group_chat_timeline' => $groupChatTimeline,
         ]);
+    }
+
+    public function getPublicationDeadlines(Request $request)
+    {
+        try {
+            // Get all scrum boards with deadlines, then get their associated group chats (like dashboard timeline)
+            $scrumBoardsWithDeadlines = \App\Models\ScrumBoard::with(['groupChat.members.profile', 'leadReviewer'])
+                ->whereNotNull('deadline')
+                ->get()
+                ->filter(function ($scrumBoard) {
+                    // Ensure the scrum board has an associated group chat
+                    return $scrumBoard->groupChat;
+                })
+                ->map(function ($scrumBoard) {
+                    $groupChat = $scrumBoard->groupChat;
+                    $leadReviewer = $scrumBoard->leadReviewer;
+                    $membersCount = $groupChat->members->count();
+                    
+                    // Calculate days until deadline
+                    $deadlineDate = \Carbon\Carbon::parse($scrumBoard->deadline);
+                    $now = \Carbon\Carbon::now();
+                    $daysUntilDeadline = (int) $now->diffInDays($deadlineDate, false); // false = can be negative
+                    
+                    return [
+                        'id' => $groupChat->id,
+                        'name' => $groupChat->name,
+                        'deadline' => $deadlineDate->format('M d, Y'),
+                        'deadline_raw' => $scrumBoard->deadline,
+                        'days_until_deadline' => $daysUntilDeadline,
+                        'lead_reviewer' => $leadReviewer ? ($leadReviewer->profile->name ?? $leadReviewer->name) : 'Not assigned',
+                        'members_count' => $membersCount,
+                        'status' => $groupChat->track ?? 'pending',
+                        'urgency' => $daysUntilDeadline <= 3 ? 'urgent' : ($daysUntilDeadline <= 7 ? 'warning' : 'normal'),
+                    ];
+                })
+                ->sortBy('days_until_deadline')
+                ->values();
+
+            // Group by urgency for graph data
+            $urgent = $scrumBoardsWithDeadlines->where('urgency', 'urgent')->count();
+            $warning = $scrumBoardsWithDeadlines->where('urgency', 'warning')->count();
+            $normal = $scrumBoardsWithDeadlines->where('urgency', 'normal')->count();
+
+            return response()->json([
+                'success' => true,
+                'deadlines' => $scrumBoardsWithDeadlines,
+                'graph_data' => [
+                    'urgent' => $urgent,
+                    'warning' => $warning,
+                    'normal' => $normal,
+                ],
+                'total' => $scrumBoardsWithDeadlines->count(),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching publication deadlines: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch publication deadlines',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

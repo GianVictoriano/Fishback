@@ -131,6 +131,7 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/dashboard-stats', [ArticleController::class, 'getDashboardStats']);
     Route::get('/contributors', [ArticleController::class, 'getAllContributors']);
     Route::get('/graph-data', [ArticleController::class, 'getGraphData']);
+    Route::get('/publication-deadlines', [ArticleController::class, 'getPublicationDeadlines']);
     
     // Media Management
     Route::get('/media/articles', [ArticleController::class, 'getMediaArticles']);
@@ -256,4 +257,9 @@ Route::middleware('force.api.auth')->group(function () {
     // Submissions (Artwork, Literature, Photography)
     Route::apiResource('submissions', App\Http\Controllers\SubmissionController::class);
     Route::get('/my-submissions', [App\Http\Controllers\SubmissionController::class, 'mySubmissions']);
+
+    // Creatives (Artwork, Poem, Essay)
+    Route::apiResource('creatives', App\Http\Controllers\CreativeController::class);
+    Route::get('/my-creatives', [App\Http\Controllers\CreativeController::class, 'myCreatives']);
+    Route::get('/creatives-published', [App\Http\Controllers\CreativeController::class, 'published']);
 });
