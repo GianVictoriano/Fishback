@@ -185,7 +185,7 @@ class ReviewImageController extends Controller
 
     public function show($id)
     {
-        $reviewImage = ReviewImage::findOrFail($id);
+        $reviewImage = ReviewImage::with(['user:id,name', 'group:id,name,status'])->findOrFail($id);
         return response()->json($reviewImage);
     }
 
