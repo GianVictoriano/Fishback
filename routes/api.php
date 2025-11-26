@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\FolioController;
 use App\Http\Controllers\ImportantNoteController;
 use App\Http\Controllers\Api\CoverageRequestController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\WorkingHourController;
 
 /*
 |--------------------------------------------------------------------------
@@ -91,6 +92,8 @@ Route::get('/public/articles/{article}', [ArticleController::class, 'show']);
 Route::post('/public/articles/{article}/react', [ArticleController::class, 'react']);
 Route::post('/public/articles/{article}/visit', [ArticleController::class, 'visit']);
 Route::get('/public/recommendations', [ArticleController::class, 'recommendations']);
+Route::get('/public/activity-data', [ArticleController::class, 'getActivityData']);
+Route::get('/public/activity-details', [ArticleController::class, 'getActivityDetails']);
 
 // Protected routes
 Route::middleware('force.api.auth')->group(function () {
@@ -129,6 +132,7 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/dashboard-stats', [ArticleController::class, 'getDashboardStats']);
     Route::get('/contributors', [ArticleController::class, 'getAllContributors']);
     Route::get('/graph-data', [ArticleController::class, 'getGraphData']);
+    Route::get('/publication-deadlines', [ArticleController::class, 'getPublicationDeadlines']);
     
     // Media Management
     Route::get('/media/articles', [ArticleController::class, 'getMediaArticles']);
@@ -246,8 +250,25 @@ Route::middleware('force.api.auth')->group(function () {
     // Dashboard Statistics
     Route::get('/dashboard/statistics', [DashboardController::class, 'getStatistics']);
 
+    // Working Hours
+    Route::get('/working-hours', [WorkingHourController::class, 'index']);
+    Route::get('/working-hours/me', [WorkingHourController::class, 'show']);
+    Route::post('/working-hours', [WorkingHourController::class, 'store']);
+
+    // Document Approval Tracking
+    Route::get('/document-approval/workflow', [DocumentApprovalController::class, 'getWorkflow']);
+
     // Literary Works (Heyzine Integration)
     Route::post('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'store']);
     Route::get('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'index']);
     Route::get('/literary-works/{id}', [App\Http\Controllers\Api\LiteraryWorkController::class, 'show']);
+
+    // Submissions (Artwork, Literature, Photography)
+    Route::apiResource('submissions', App\Http\Controllers\SubmissionController::class);
+    Route::get('/my-submissions', [App\Http\Controllers\SubmissionController::class, 'mySubmissions']);
+
+    // Creatives (Artwork, Poem, Essay)
+    Route::apiResource('creatives', App\Http\Controllers\CreativeController::class);
+    Route::get('/my-creatives', [App\Http\Controllers\CreativeController::class, 'myCreatives']);
+    Route::get('/creatives-published', [App\Http\Controllers\CreativeController::class, 'published']);
 });

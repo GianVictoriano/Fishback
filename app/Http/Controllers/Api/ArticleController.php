@@ -200,7 +200,7 @@ class ArticleController extends Controller
     public function trendingArticles(Request $request)
     {
         $threeDaysAgo = now()->subDays(3);
-        $limit = 10;
+        $limit = 25; // Updated to match frontend expectations
         $genre = $request->query('genre');
 
         // First, get trending articles from the last 3 days
@@ -907,191 +907,235 @@ class ArticleController extends Controller
         }
     }
 
-    public function getAllContributors(Request $request)
+    public function getActivityData(Request $request)
     {
         try {
+            $limit = $request->input('limit', 50);
+            $filter = $request->input('filter', 'all');
             $search = $request->input('search', '');
-            $timeframe = $request->input('timeframe', '30'); // days
-            $role = $request->input('role', 'all');
-            
-            Log::info('Fetching all contributors', [
-                'search' => $search,
-                'timeframe' => $timeframe,
-                'role' => $role
-            ]);
-            
-            // Get all users with group chats first (no date filtering in query)
-            $query = \App\Models\User::whereHas('groupChats')
-                ->with(['profile'])
-                ->withCount(['groupChats']);
-            
-            // We'll filter by date during processing to avoid SQL errors
-            $cutoffDate = now()->subDays((int)$timeframe);
-            
-            Log::info('Setting up timeframe filtering', [
-                'timeframe' => $timeframe,
-                'cutoff_date' => $cutoffDate->toDateTimeString()
-            ]);
-            
-            // Apply search filter
-            if ($search) {
-                $query->where(function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
-                });
-            }
-            
-            // Apply role filter
-            if ($role !== 'all') {
-                $query->whereHas('profile', function($profileQuery) use ($role) {
-                    $profileQuery->where('role', $role);
-                });
-            }
-            
-            $contributors = $query->orderBy('group_chats_count', 'desc')
-                ->paginate(20);
-            
-            Log::info('Initial query results', [
-                'total' => $contributors->total(),
-                'count' => $contributors->count(),
-                'users' => $contributors->getCollection()->map(function($user) {
-                    return [
-                        'id' => $user->id,
-                        'name' => $user->profile ? $user->profile->name : $user->name,
-                        'group_chats_count' => $user->group_chats_count,
+
+            $activities = [];
+
+            // 1. Article creation/publishing activities
+            $articleQuery = \App\Models\Article::with(['user', 'user.profile'])
+                ->where('status', 'published')
+                ->whereNotNull('published_at')
+                ->orderBy('published_at', 'desc')
+                ->limit(20);
+
+            if ($filter === 'publishing' || $filter === 'all') {
+                $articles = $articleQuery->get();
+                foreach ($articles as $article) {
+                    $activities[] = [
+                        'id' => 'article_' . $article->id,
+                        'user_name' => $article->user->profile->name ?? $article->user->name ?? 'Unknown User',
+                        'type' => 'create',
+                        'description' => 'published article "' . $article->title . '"',
+                        'timestamp' => $this->getTimeAgo($article->published_at),
+                        'details' => 'Article ID: ' . $article->id,
+                        'created_at' => $article->published_at
                     ];
-                })->toArray()
-            ]);
-            
-            // Process each contributor to add detailed stats
-            $processedContributors = $contributors->getCollection()->map(function ($user) use ($timeframe, $cutoffDate) {
-                try {
-                    Log::info('Processing user', [
-                        'user_id' => $user->id,
-                        'user_name' => $user->profile ? $user->profile->name : $user->name,
-                        'group_chats_count_from_query' => $user->group_chats_count
-                    ]);
-                    
-                    // Use direct DB query to count group chats - more reliable
-                    $totalAssigned = DB::table('group_chat_members')
-                        ->where('user_id', $user->id)
-                        ->count();
-                    
-                    // Get group chat IDs for this user
-                    $groupChatIds = DB::table('group_chat_members')
-                        ->where('user_id', $user->id)
-                        ->pluck('group_chat_id')
-                        ->toArray();
-                    
-                    // Get group chats within timeframe
-                    $filteredGroupChatIds = DB::table('group_chats')
-                        ->whereIn('id', $groupChatIds)
-                        ->where('updated_at', '>=', $cutoffDate)
-                        ->pluck('id')
-                        ->toArray();
-                    
-                    Log::info('User group chat counts (DB query)', [
-                        'user_id' => $user->id,
-                        'user_name' => $user->profile ? $user->profile->name : $user->name,
-                        'all_chats' => $totalAssigned,
-                        'filtered_chats' => count($filteredGroupChatIds),
-                        'timeframe' => $timeframe,
-                        'group_chat_ids' => $groupChatIds,
-                        'filtered_ids' => $filteredGroupChatIds
-                    ]);
-                    
-                    // Get the actual group chat models for status calculation
-                    $filteredGroupChats = \App\Models\GroupChat::whereIn('id', $filteredGroupChatIds)
-                        ->with('folio')
-                        ->get();
-                    
-                    // Calculate status counts from filtered group chats
-                    $approvedCount = 0;
-                    $pendingCount = 0;
-                    $inReviewCount = 0;
-                    
-                    Log::info('User group chats retrieved', [
-                        'user_id' => $user->id,
-                        'count' => $filteredGroupChats->count(),
-                        'chat_ids' => $filteredGroupChats->pluck('id')->toArray()
-                    ]);
-                    
-                    foreach ($filteredGroupChats as $groupChat) {
-                        // Use the new track column for simple status determination
-                        $track = $groupChat->track ?? 'pending';
-                        
-                        Log::info('Processing group chat for user', [
-                            'user_id' => $user->id,
-                            'group_chat_id' => $groupChat->id,
-                            'track' => $track
-                        ]);
-                        
-                        if ($track === 'approved') {
-                            $approvedCount++;
-                        } elseif ($track === 'review') {
-                            $inReviewCount++;
-                        } else {
-                            $pendingCount++;
-                        }
-                    }
-                    
-                    $result = [
-                        'id' => $user->id,
-                        'name' => $user->profile ? $user->profile->name : $user->name,
-                        'email' => $user->email,
-                        'total_assigned' => count($filteredGroupChats), // Use filtered count for timeframe
-                        'approved' => $approvedCount,
-                        'pending' => $pendingCount,
-                        'in_review' => $inReviewCount,
-                        'avatar' => $user->profile ? $user->profile->avatar : null,
-                    ];
-                    
-                    Log::info('User result', $result);
-                    
-                    return $result;
-                    
-                } catch (\Exception $e) {
-                    Log::error('Error processing user stats', [
-                        'user_id' => $user->id,
-                        'error' => $e->getMessage()
-                    ]);
-                    
-                    // Return safe fallback data
-                    return response()->json([
-                        'content_submissions' => [],
-                        'article_publications' => [],
-                        'group_chat_status' => [
-                            'approved' => 0,
-                            'pending' => 0,
-                            'in_review' => 0,
-                        ],
-                        'activity_status' => [],
-                    ]);
                 }
+            }
+
+            // 2. Article reactions (likes, hearts, etc.)
+            if ($filter === 'user' || $filter === 'all') {
+                $reactions = \App\Models\ArticleReaction::with([
+                    'user' => function($query) {
+                        $query->select('id', 'name');
+                    },
+                    'user.profile' => function($query) {
+                        $query->select('user_id', 'name');
+                    },
+                    'article' => function($query) {
+                        $query->select('id', 'title');
+                    }
+                ])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(10)  // Reduced from 15 to 10 for faster loading
+                    ->get();
+
+                foreach ($reactions as $reaction) {
+                    if ($reaction->user) {
+                        $activities[] = [
+                            'id' => 'reaction_' . $reaction->id,
+                            'user_name' => $reaction->user->profile->name ?? $reaction->user->name ?? 'Unknown User',
+                            'type' => 'comment',
+                            'description' => 'reacted with ' . $reaction->reaction_type . ' to "' . ($reaction->article->title ?? 'an article') . '"',
+                            'timestamp' => $this->getTimeAgo($reaction->created_at),
+                            'details' => null,
+                            'created_at' => $reaction->created_at
+                        ];
+                    }
+                }
+            }
+
+            // 3. Applications
+            if ($filter === 'user' || $filter === 'all') {
+                $applications = \App\Models\Applicant::orderBy('created_at', 'desc')
+                    ->limit(10)
+                    ->get();
+
+                foreach ($applications as $application) {
+                    $activities[] = [
+                        'id' => 'application_' . $application->id,
+                        'user_name' => $application->full_name,
+                        'type' => 'create',
+                        'description' => 'submitted a collaborator application',
+                        'timestamp' => $this->getTimeAgo($application->created_at),
+                        'details' => 'Status: ' . ($application->status ?? 'pending'),
+                        'created_at' => $application->created_at
+                    ];
+                }
+            }
+
+            // 4. Content reviews
+            if ($filter === 'submission' || $filter === 'all') {
+                $reviews = \App\Models\ReviewContent::with(['user', 'user.profile', 'group'])
+                    ->orderBy('uploaded_at', 'desc')
+                    ->limit(10)
+                    ->get();
+
+                foreach ($reviews as $review) {
+                    $statusAction = $review->status === 'approved' ? 'approved' : ($review->status === 'rejected' ? 'rejected' : 'submitted');
+                    $activities[] = [
+                        'id' => 'review_' . $review->id,
+                        'user_name' => $review->user->profile->name ?? $review->user->name ?? 'Unknown',
+                        'type' => 'update',
+                        'description' => 'submitted content in "' . ($review->group->name ?? 'a group') . '"',
+                        'timestamp' => \Carbon\Carbon::parse($review->uploaded_at)->format('M d, Y H:i'),
+                        'details' => null,
+                        'created_at' => $review->uploaded_at
+                    ];
+                }
+            }
+
+            // 5. Topic creation (Forum)
+            if ($filter === 'publishing' || $filter === 'all') {
+                $topics = \App\Models\Topic::with(['user', 'user.profile'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(10)
+                    ->get();
+
+                foreach ($topics as $topic) {
+                    $activities[] = [
+                        'id' => 'topic_' . $topic->id,
+                        'user_name' => $topic->user->profile->name ?? $topic->user->name ?? 'Unknown User',
+                        'type' => 'create',
+                        'description' => 'created forum topic "' . $topic->title . '"',
+                        'timestamp' => $this->getTimeAgo($topic->created_at),
+                        'details' => null,
+                        'created_at' => $topic->created_at
+                    ];
+                }
+            }
+
+            // 8. Collaborator Tasks
+            if ($filter === 'collaborator' || $filter === 'all') {
+                $pendingGroupChats = \App\Models\GroupChat::with(['scrumBoard.leadReviewer'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(10)
+                    ->get();
+
+                foreach ($pendingGroupChats as $chat) {
+                    $deadline = $chat->scrumBoard ? $chat->scrumBoard->deadline : null;
+                    $deadlineText = $deadline ? \Carbon\Carbon::parse($deadline)->format('M d, Y') : 'No deadline set';
+                    $lead = $chat->scrumBoard ? $chat->scrumBoard->leadReviewer : null;
+                    $leadName = $lead ? ($lead->profile->name ?? $lead->name ?? 'Unknown Lead') : 'No lead assigned';
+                    $taskTitle = $chat->scrumBoard ? $chat->scrumBoard->title : $chat->name;
+                    $status = $chat->track ?? 'pending';
+                    $statusLabel = ucfirst($status); // Pending, Review, Approved
+                    $activities[] = [
+                        'id' => 'task_' . $chat->id,
+                        'user_name' => $statusLabel . ': ' . $taskTitle,
+                        'type' => $status, // Use status as type for color
+                        'description' => ' - Lead Reviewer: ' . $leadName . ' - Deadline: ' . $deadlineText,
+                        'timestamp' => 'Created at: ' . \Carbon\Carbon::parse($chat->created_at)->format('M d, Y H:i'),
+                        'details' => 'Group Chat ID: ' . $chat->id,
+                        'created_at' => $chat->created_at
+                    ];
+                }
+            }
+
+            // 9. System Events (Branding and Module History)
+            if ($filter === 'system' || $filter === 'all') {
+                // Branding history
+                $brandingHistory = \DB::table('branding_history')
+                    ->join('users', 'branding_history.user_id', '=', 'users.id')
+                    ->select('branding_history.*', 'users.name as user_name')
+                    ->orderBy('branding_history.created_at', 'desc')
+                    ->limit(5)
+                    ->get();
+
+                foreach ($brandingHistory as $history) {
+                    $activities[] = [
+                        'id' => 'branding_' . $history->id,
+                        'user_name' => $history->user_name,
+                        'type' => 'update',
+                        'description' => 'updated branding settings (' . $history->action . ')',
+                        'timestamp' => $this->getTimeAgo($history->created_at),
+                        'details' => 'Branding History ID: ' . $history->id,
+                        'created_at' => $history->created_at
+                    ];
+                }
+
+                // Profile module history
+                $moduleHistory = \App\Models\ProfileModuleHistory::with(['profile.user', 'module'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(5)
+                    ->get();
+
+                foreach ($moduleHistory as $history) {
+                    $profileName = $history->profile->user->name ?? 'Unknown';
+                    $moduleName = $history->module->display_name ?? $history->module->name ?? 'Unknown Module';
+                    $activities[] = [
+                        'id' => 'module_' . $history->id,
+                        'user_name' => $profileName,
+                        'type' => 'create',
+                        'description' => $history->action . ' module: ' . $moduleName,
+                        'timestamp' => $this->getTimeAgo($history->created_at),
+                        'details' => 'Module History ID: ' . $history->id,
+                        'created_at' => $history->created_at
+                    ];
+                }
+            }
+
+            // Sort all activities by timestamp (most recent first)
+            usort($activities, function($a, $b) {
+                return strtotime($b['created_at']) - strtotime($a['created_at']);
             });
-            
-            // Replace the collection with processed data
-            $contributors->setCollection($processedContributors);
-            
-            Log::info('All contributors fetched successfully', [
-                'timeframe' => $timeframe,
-                'total' => $contributors->total(),
-                'count' => $contributors->count()
-            ]);
-            
-            return response()->json($contributors);
-            
-        } catch (\Exception $e) {
-            Log::error('Error in getAllContributors', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
+
+            // Apply search filter
+            if (!empty($search)) {
+                $activities = array_filter($activities, function($activity) use ($search) {
+                    return stripos($activity['user_name'], $search) !== false ||
+                           stripos($activity['description'], $search) !== false;
+                });
+            }
+
+            // Limit results
+            $activities = array_slice($activities, 0, $limit);
+
             return response()->json([
-                'error' => 'Failed to fetch contributors',
-                'message' => $e->getMessage()
+                'success' => true,
+                'data' => $activities,
+                'total' => count($activities)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching activity data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch activity data',
+                'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function getTimeAgo($timestamp)
+    {
+        $past = \Carbon\Carbon::parse($timestamp);
+        return $past->format('M d, Y H:i');
     }
 
     /**
@@ -1163,6 +1207,8 @@ class ArticleController extends Controller
             if ($validated['status'] === 'published' && !$article->published_at) {
                 $article->update(['published_at' => now()]);
             }
+
+            broadcast(new \App\Events\ActivityUpdated());
 
             return new ArticleResource($article->load('media'));
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -1606,6 +1652,33 @@ class ArticleController extends Controller
             $topContributors = collect([]);
         }
 
+        // Get group chat timeline based on deadlines
+        $groupChatTimeline = \App\Models\GroupChat::whereHas('members', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->whereHas('scrumBoard', function ($query) {
+                $query->whereNotNull('deadline');
+            })
+            ->with(['scrumBoard.leadReviewer', 'members.profile'])
+            ->orderBy('scrum_boards.deadline', 'asc')
+            ->join('scrum_boards', 'group_chats.scrum_board_id', '=', 'scrum_boards.id')
+            ->select('group_chats.*', 'scrum_boards.deadline', 'scrum_boards.title', 'scrum_boards.lead_reviewer_id')
+            ->get()
+            ->map(function ($groupChat) {
+                $leadReviewer = $groupChat->scrumBoard ? $groupChat->scrumBoard->leadReviewer : null;
+                $membersCount = $groupChat->members->count();
+                
+                return [
+                    'id' => $groupChat->id,
+                    'name' => $groupChat->name,
+                    'deadline' => $groupChat->deadline ? \Carbon\Carbon::parse($groupChat->deadline)->format('M d, Y') : null,
+                    'deadline_raw' => $groupChat->deadline,
+                    'lead_reviewer' => $leadReviewer ? ($leadReviewer->profile->name ?? $leadReviewer->name) : 'Not assigned',
+                    'members_count' => $membersCount,
+                    'status' => $groupChat->track ?? 'pending',
+                ];
+            });
+
         return response()->json([
             'pending_tasks' => $pendingTasks,
             'in_review' => $inReview,
@@ -1613,6 +1686,192 @@ class ArticleController extends Controller
             'active_projects' => $activeProjects,
             'upcoming_activities' => $upcomingActivities,
             'top_contributors' => $topContributors,
+            'group_chat_timeline' => $groupChatTimeline,
         ]);
+    }
+
+    public function getPublicationDeadlines(Request $request)
+    {
+        try {
+            // Get all scrum boards with deadlines, then get their associated group chats (like dashboard timeline)
+            $scrumBoardsWithDeadlines = \App\Models\ScrumBoard::with(['groupChat.members.profile', 'leadReviewer'])
+                ->whereNotNull('deadline')
+                ->get()
+                ->filter(function ($scrumBoard) {
+                    // Ensure the scrum board has an associated group chat
+                    return $scrumBoard->groupChat;
+                })
+                ->map(function ($scrumBoard) {
+                    $groupChat = $scrumBoard->groupChat;
+                    $leadReviewer = $scrumBoard->leadReviewer;
+                    $membersCount = $groupChat->members->count();
+                    
+                    // Calculate days until deadline
+                    $deadlineDate = \Carbon\Carbon::parse($scrumBoard->deadline);
+                    $now = \Carbon\Carbon::now();
+                    $daysUntilDeadline = (int) $now->diffInDays($deadlineDate, false); // false = can be negative
+                    
+                    return [
+                        'id' => $groupChat->id,
+                        'name' => $groupChat->name,
+                        'deadline' => $deadlineDate->format('M d, Y'),
+                        'deadline_raw' => $scrumBoard->deadline,
+                        'days_until_deadline' => $daysUntilDeadline,
+                        'lead_reviewer' => $leadReviewer ? ($leadReviewer->profile->name ?? $leadReviewer->name) : 'Not assigned',
+                        'members_count' => $membersCount,
+                        'status' => $groupChat->track ?? 'pending',
+                        'urgency' => $daysUntilDeadline <= 3 ? 'urgent' : ($daysUntilDeadline <= 7 ? 'warning' : 'normal'),
+                    ];
+                })
+                ->sortBy('days_until_deadline')
+                ->values();
+
+            // Group by urgency for graph data
+            $urgent = $scrumBoardsWithDeadlines->where('urgency', 'urgent')->count();
+            $warning = $scrumBoardsWithDeadlines->where('urgency', 'warning')->count();
+            $normal = $scrumBoardsWithDeadlines->where('urgency', 'normal')->count();
+
+            return response()->json([
+                'success' => true,
+                'deadlines' => $scrumBoardsWithDeadlines,
+                'graph_data' => [
+                    'urgent' => $urgent,
+                    'warning' => $warning,
+                    'normal' => $normal,
+                ],
+                'total' => $scrumBoardsWithDeadlines->count(),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching publication deadlines: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch publication deadlines',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get activity details for modal
+     */
+    public function getActivityDetails(Request $request)
+    {
+        try {
+            $id = $request->input('id');
+
+            if (strpos($id, 'task_') === 0) {
+                $chat_id = substr($id, 5);
+                $chat = \App\Models\GroupChat::with(['members.profile', 'scrumBoard'])->find($chat_id);
+
+                if (!$chat) {
+                    return response()->json(['success' => false, 'message' => 'Group chat not found']);
+                }
+
+                $members = $chat->members->map(function($member) {
+                    return $member->profile->name ?? $member->name ?? 'Unknown';
+                })->toArray();
+
+                // Versions: count of submitted content (review_content + review_images)
+                $versions = \App\Models\ReviewContent::where('group_id', $chat_id)->count() +
+                           \App\Models\ReviewImage::where('group_id', $chat_id)->count();
+
+                $status = $chat->track ?? 'pending';
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'members' => $members,
+                        'versions' => $versions,
+                        'status' => $status
+                    ]
+                ]);
+            } elseif (strpos($id, 'article_') === 0) {
+                $article_id = substr($id, 8);
+                $article = \App\Models\Article::with(['user.profile'])->find($article_id);
+
+                if (!$article) {
+                    return response()->json(['success' => false, 'message' => 'Article not found']);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'title' => $article->title,
+                        'author' => $article->user->profile->name ?? $article->user->name ?? 'Unknown',
+                        'genre' => $article->genre,
+                        'published_at' => \Carbon\Carbon::parse($article->published_at)->format('M d, Y H:i')
+                    ]
+                ]);
+            } elseif (strpos($id, 'review_') === 0) {
+                $review_id = substr($id, 7);
+                $review = \App\Models\ReviewContent::with(['user.profile', 'group'])->find($review_id);
+
+                if (!$review) {
+                    return response()->json(['success' => false, 'message' => 'Review not found']);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'user' => $review->user->profile->name ?? $review->user->name ?? 'Unknown',
+                        'status' => $review->status,
+                        'submitted_at' => \Carbon\Carbon::parse($review->uploaded_at)->format('M d, Y H:i')
+                    ]
+                ]);
+            } elseif (strpos($id, 'topic_') === 0) {
+                $topic_id = substr($id, 6);
+                $topic = \App\Models\Topic::with(['user.profile'])->find($topic_id);
+
+                if (!$topic) {
+                    return response()->json(['success' => false, 'message' => 'Topic not found']);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'user' => $topic->user->profile->name ?? $topic->user->name ?? 'Unknown',
+                        'created_at' => \Carbon\Carbon::parse($topic->created_at)->format('M d, Y H:i')
+                    ]
+                ]);
+            } elseif (strpos($id, 'branding_') === 0) {
+                $history_id = substr($id, 9);
+                $history = \DB::table('branding_history')->find($history_id);
+
+                if (!$history) {
+                    return response()->json(['success' => false, 'message' => 'Branding history not found']);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'action' => $history->action,
+                        'changes' => json_decode($history->changes, true)
+                    ]
+                ]);
+            } elseif (strpos($id, 'module_') === 0) {
+                $history_id = substr($id, 7);
+                $history = \App\Models\ProfileModuleHistory::with(['profile.user', 'module'])->find($history_id);
+
+                if (!$history) {
+                    return response()->json(['success' => false, 'message' => 'Module history not found']);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'action' => $history->action,
+                        'module_name' => $history->module->display_name ?? $history->module->name ?? 'Unknown',
+                        'user' => $history->profile->user->name ?? 'Unknown'
+                    ]
+                ]);
+            }
+
+            return response()->json(['success' => true, 'data' => []]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching activity details: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to fetch details'], 500);
+        }
     }
 }

@@ -9,10 +9,10 @@ return array (
   ),
   'colors' => 
   array (
-    'primary' => '#131754',
+    'primary' => '#080b28',
     'secondary' => '#202444',
     'tertiary' => '#3949ab',
-    'accent' => '#10B981',
+    'accent' => '#099e6c',
     'background' => '#fcfcfc',
     'text_primary' => '#edfcf9',
     'text_secondary' => '#193377',
