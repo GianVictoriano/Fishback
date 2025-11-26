@@ -1346,19 +1346,26 @@ class ArticleController extends Controller
     public function publicFeaturedArticles(Request $request)
     {
         try {
-            $articles = Article::with(['media', 'user'])
+            // Use a lightweight query + resource for featured cards only
+            $query = Article::with(['media:id,article_id,file_path'])
                 ->where('status', 'published')
                 ->where('status', '!=', 'archived') // Exclude archived articles
-                ->whereHas('featured')
+                ->whereHas('featured');
+
+            // Allow an optional limit parameter, defaulting to 40
+            $limit = (int) $request->input('limit', 40);
+
+            $articles = $query
                 ->orderByDesc(
                     Article::select('featured_at')
                         ->from('featured')
                         ->whereColumn('featured.article_id', 'articles.id')
                         ->limit(1)
                 )
-                ->paginate(15);
+                ->take($limit)
+                ->get();
 
-            return ArticleResource::collection($articles);
+            return ArticleSummaryResource::collection($articles);
         } catch (\Exception $e) {
             Log::error('Error fetching public featured articles: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to fetch featured articles'], 500);

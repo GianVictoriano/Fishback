@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 /**
  * Lightweight representation for list views.
@@ -16,13 +17,19 @@ class ArticleSummaryResource extends JsonResource
      */
     public function toArray($request): array
     {
+        // Build a lightweight excerpt from the content without returning full HTML
+        $content = $this->content ?? '';
+        $plainText = trim(strip_tags($content));
+        $excerpt = Str::limit($plainText, 150);
+
         return [
-            'id'            => $this->id,
-            'title'         => $this->title,
-            'genre'         => $this->genre,
-            'published_at'  => $this->published_at,
+            'id'           => $this->id,
+            'title'        => $this->title,
+            'genre'        => $this->genre,
+            'published_at' => $this->published_at,
+            'excerpt'      => $excerpt,
             // Provide first image path (if any)
-            'image_path'    => $this->media->first()->file_path ?? null,
+            'image_path'   => $this->media->first()->file_path ?? null,
         ];
     }
 }

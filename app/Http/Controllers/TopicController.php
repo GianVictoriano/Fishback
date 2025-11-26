@@ -48,6 +48,16 @@ class TopicController extends Controller
         return response()->json(['message' => 'Topic has been reported']);
     }
 
+    // GET /api/users/{userId}/posts-count
+    public function getUserPostsCount($userId)
+    {
+        $count = Topic::where('user_id', $userId)
+            ->where('status', Topic::STATUS_ACTIVE)
+            ->count();
+        
+        return response()->json(['count' => $count]);
+    }
+
     public function delete(Topic $topic)
     {
         $topic->update(['status' => Topic::STATUS_DELETED]);

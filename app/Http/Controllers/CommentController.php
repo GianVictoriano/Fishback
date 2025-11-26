@@ -43,4 +43,14 @@ class CommentController extends Controller
         $comment->update(['status' => Comment::STATUS_DELETED]);
         return response()->json(['message' => 'Comment has been deleted']);
     }
+
+    // GET /api/users/{user}/comments-count
+    public function getUserCommentsCount($userId)
+    {
+        $count = Comment::where('user_id', $userId)
+            ->where('status', Comment::STATUS_ACTIVE)
+            ->count();
+        
+        return response()->json(['count' => $count]);
+    }
 }

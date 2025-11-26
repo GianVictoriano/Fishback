@@ -59,9 +59,11 @@ Route::post('/login-as', [AuthController::class, 'loginAs']);
 Route::get('/application-period', [ApplicationPeriodController::class, 'index']);
 Route::get('/application-period/status', [ApplicationPeriodController::class, 'checkStatus']);
 
-// Public topic routes
+// Public routes
 Route::get('/topics', [TopicController::class, 'index']);
 Route::get('/topics/{topic}', [TopicController::class, 'show']);
+Route::get('/users/{userId}/comments-count', [CommentController::class, 'getUserCommentsCount']);
+Route::get('/users/{userId}/posts-count', [TopicController::class, 'getUserPostsCount']);
 
 // Contributions
 Route::middleware('force.api.auth')->group(function () {
@@ -254,9 +256,6 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/working-hours', [WorkingHourController::class, 'index']);
     Route::get('/working-hours/me', [WorkingHourController::class, 'show']);
     Route::post('/working-hours', [WorkingHourController::class, 'store']);
-
-    // Document Approval Tracking
-    Route::get('/document-approval/workflow', [DocumentApprovalController::class, 'getWorkflow']);
 
     // Literary Works (Heyzine Integration)
     Route::post('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'store']);

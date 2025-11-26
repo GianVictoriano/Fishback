@@ -22,7 +22,7 @@ class ContributionController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'content' => 'required|string',
-            'category' => 'required|in:artwork,fiction,poetry,essay,story,coverage',
+            'category' => 'required|in:artwork,fiction,poetry,essay,story,coverage,documentation',
             'files' => $request->category === 'artwork' ? 'required|array|min:1' : 'nullable|array',
             'files.*' => 'file|max:5120', // 5MB per file
             // Coverage-specific fields
