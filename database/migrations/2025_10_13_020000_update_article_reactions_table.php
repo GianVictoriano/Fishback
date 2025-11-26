@@ -13,9 +13,6 @@ return new class extends Migration
                 $table->string('ip_address')->nullable()->after('reaction_type');
             }
 
-            // Composite unique keys to prevent duplicate reactions
-            $table->unique(['user_id', 'article_id'], 'article_reactions_user_unique');
-            $table->unique(['ip_address', 'article_id'], 'article_reactions_ip_unique');
         });
     }
 
