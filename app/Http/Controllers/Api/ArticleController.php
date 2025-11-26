@@ -1346,26 +1346,19 @@ class ArticleController extends Controller
     public function publicFeaturedArticles(Request $request)
     {
         try {
-            // Use a lightweight query + resource for featured cards only
-            $query = Article::with(['media:id,article_id,file_path'])
+            $articles = Article::with(['media', 'user'])
                 ->where('status', 'published')
                 ->where('status', '!=', 'archived') // Exclude archived articles
-                ->whereHas('featured');
-
-            // Allow an optional limit parameter, defaulting to 40
-            $limit = (int) $request->input('limit', 40);
-
-            $articles = $query
+                ->whereHas('featured')
                 ->orderByDesc(
                     Article::select('featured_at')
                         ->from('featured')
                         ->whereColumn('featured.article_id', 'articles.id')
                         ->limit(1)
                 )
-                ->take($limit)
-                ->get();
+                ->paginate(15);
 
-            return ArticleSummaryResource::collection($articles);
+            return ArticleResource::collection($articles);
         } catch (\Exception $e) {
             Log::error('Error fetching public featured articles: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to fetch featured articles'], 500);
@@ -1380,92 +1373,101 @@ class ArticleController extends Controller
         try {
             $user = $request->user();
             
-            // Get submissions for the last 8 days (current day + 7 previous)
-            $startDate = now()->subDays(7)->startOfDay();
+            // Get period from request, default to 30 days
+            $period = $request->input('period', 30);
+            
+            // Get submissions for the last N days (current day + N-1 previous)
+            $startDate = now()->subDays($period - 1)->startOfDay();
             $endDate = now()->endOfDay();
             
-            // Get all dates in the range
-            $dateRange = [];
-            $currentDate = $startDate->copy();
-            while ($currentDate <= $endDate) {
-                $dateRange[] = $currentDate->format('Y-m-d');
-                $currentDate->addDay();
+            try {
+                // Content submissions over time (review_content and review_images)
+                $contentSubmissions = DB::table('review_content')
+                    ->join('group_chats', 'review_content.group_id', '=', 'group_chats.id')
+                    ->join('group_chat_members', 'group_chats.id', '=', 'group_chat_members.group_chat_id')
+                    ->where('group_chat_members.user_id', $user->id)
+                    ->where('review_content.uploaded_at', '>=', $startDate)
+                    ->where('review_content.uploaded_at', '<=', $endDate)
+                    ->selectRaw('DATE(review_content.uploaded_at) as date, COUNT(*) as count')
+                    ->groupBy('date')
+                    ->get()
+                    ->keyBy('date');
+            } catch (\Exception $e) {
+                Log::error('Error fetching content submissions: ' . $e->getMessage());
+                $contentSubmissions = collect();
             }
             
-            // Content submissions over time (review_content and review_images)
-            $contentSubmissions = DB::table('review_content')
-                ->join('group_chats', 'review_content.group_id', '=', 'group_chats.id')
-                ->join('group_chat_members', 'group_chats.id', '=', 'group_chat_members.group_chat_id')
-                ->where('group_chat_members.user_id', $user->id)
-                ->where('review_content.uploaded_at', '>=', $startDate)
-                ->where('review_content.uploaded_at', '<=', $endDate)
-                ->selectRaw('DATE(review_content.uploaded_at) as date, COUNT(*) as count')
-                ->groupBy('date')
-                ->get()
-                ->keyBy('date');
-                
-            $imageSubmissions = DB::table('review_images')
-                ->join('group_chats', 'review_images.group_id', '=', 'group_chats.id')
-                ->join('group_chat_members', 'group_chats.id', '=', 'group_chat_members.group_chat_id')
-                ->where('group_chat_members.user_id', $user->id)
-                ->where('review_images.uploaded_at', '>=', $startDate)
-                ->where('review_images.uploaded_at', '<=', $endDate)
-                ->selectRaw('DATE(review_images.uploaded_at) as date, COUNT(*) as count')
-                ->groupBy('date')
-                ->get()
-                ->keyBy('date');
-                
-            // Combine submissions for each date in the range
-            $submissionsData = collect($dateRange)->map(function($date) use ($contentSubmissions, $imageSubmissions) {
+            try {
+                $imageSubmissions = DB::table('review_images')
+                    ->join('group_chats', 'review_images.group_id', '=', 'group_chats.id')
+                    ->join('group_chat_members', 'group_chats.id', '=', 'group_chat_members.group_chat_id')
+                    ->where('group_chat_members.user_id', $user->id)
+                    ->where('review_images.uploaded_at', '>=', $startDate)
+                    ->where('review_images.uploaded_at', '<=', $endDate)
+                    ->selectRaw('DATE(review_images.uploaded_at) as date, COUNT(*) as count')
+                    ->groupBy('date')
+                    ->get()
+                    ->keyBy('date');
+            } catch (\Exception $e) {
+                Log::error('Error fetching image submissions: ' . $e->getMessage());
+                $imageSubmissions = collect();
+            }
+            
+            // Prepare submissions data for frontend
+            $submissionsData = [];
+            for ($i = $period - 1; $i >= 0; $i--) {
+                $date = now()->subDays($i)->format('Y-m-d');
                 $contentCount = $contentSubmissions->get($date)->count ?? 0;
                 $imageCount = $imageSubmissions->get($date)->count ?? 0;
                 $totalCount = $contentCount + $imageCount;
                 
-                return [
+                $submissionsData[] = [
                     'date' => $date,
                     'count' => $totalCount
                 ];
-            })->filter(function($item) {
-                // Keep all dates, even with zero counts, for proper time series
-                return true;
-            });
+            }
             
-            // Group Chat Status Distribution (pie chart) - ALL projects
-            $allGroupChats = \App\Models\GroupChat::all();
-            
+            // Group Chat Status Distribution
             $groupChatStatusData = [
                 'approved' => 0,
                 'in_review' => 0,
-                'pending' => 0,
+                'pending' => 0
             ];
             
-            foreach ($allGroupChats as $groupChat) {
-                $track = $groupChat->track ?? 'pending';
+            try {
+                $groupChatIds = $user->groupChats()->pluck('group_chats.id')->toArray();
                 
-                if ($track === 'approved') {
-                    $groupChatStatusData['approved']++;
-                } elseif ($track === 'review') {
-                    $groupChatStatusData['in_review']++;
-                } else {
-                    $groupChatStatusData['pending']++;
-                }
+                $contentStats = DB::table('review_content')
+                    ->whereIn('group_id', $groupChatIds)
+                    ->selectRaw('status, COUNT(*) as count')
+                    ->groupBy('status')
+                    ->pluck('count', 'status')
+                    ->toArray();
+                    
+                $imageStats = DB::table('review_images')
+                    ->whereIn('group_id', $groupChatIds)
+                    ->selectRaw('status, COUNT(*) as count')
+                    ->groupBy('status')
+                    ->pluck('count', 'status')
+                    ->toArray();
+                    
+                $groupChatStatusData = [
+                    'approved' => ($contentStats['approved'] ?? 0) + ($imageStats['approved'] ?? 0),
+                    'in_review' => ($contentStats['pending'] ?? 0) + ($imageStats['pending'] ?? 0),
+                    'pending' => count($groupChatIds) - count(array_unique(array_merge(
+                        DB::table('review_content')->whereIn('group_id', $groupChatIds)->pluck('group_id')->toArray(),
+                        DB::table('review_images')->whereIn('group_id', $groupChatIds)->pluck('group_id')->toArray()
+                    )))
+                ];
+                
+                Log::info('Group chat status data', ['group_chat_status_data' => $groupChatStatusData]);
+            } catch (\Exception $e) {
+                Log::error('Error fetching group chat status: ' . $e->getMessage());
+                // Keep the default zeros
             }
             
             // Article Publications - Most Viewed by Genre (bar chart)
-            $articlePublications = \App\Models\Article::where('status', 'published')
-                ->whereNotNull('genre')
-                ->selectRaw('genre, COUNT(*) as article_count, SUM(COALESCE(article_metrics.visits, 0)) as total_views')
-                ->leftJoin('article_metrics', 'articles.id', '=', 'article_metrics.article_id')
-                ->groupBy('genre')
-                ->orderBy('total_views', 'desc')
-                ->get()
-                ->map(function($item) {
-                    return [
-                        'genre' => $item->genre,
-                        'count' => $item->total_views,
-                        'article_count' => $item->article_count
-                    ];
-                });
+            $articlePublications = [];
             
             return response()->json([
                 'content_submissions' => $submissionsData,
@@ -1476,13 +1478,8 @@ class ArticleController extends Controller
         } catch (\Exception $e) {
             Log::error('Graph data error: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
-                'user_id' => $request->user() ? $request->user()->id : 'guest'
             ]);
-            
-            return response()->json([
-                'error' => 'Failed to load graph data',
-                'message' => $e->getMessage()
-            ], 500);
+            return response()->json(['error' => 'Internal server error'], 500);
         }
     }
 
@@ -1502,38 +1499,53 @@ class ArticleController extends Controller
             'group_chats' => $userGroupChats->pluck('id')->toArray()
         ]);
         
-        // Initialize counters
-        $pendingTasks = 0;
-        $inReview = 0;
-        $approved = 0;
+        // Get content submissions stats from review_content and review_images tables
+        $groupChatIds = $userGroupChats->pluck('id')->toArray();
         
-        foreach ($userGroupChats as $groupChat) {
-            // Use the track column for simple status determination
-            $track = $groupChat->track ?? 'pending';
+        // Count submissions by status from review_content
+        $contentStats = DB::table('review_content')
+            ->whereIn('group_id', $groupChatIds)
+            ->selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status')
+            ->toArray();
             
-            Log::info('Processing group chat', [
-                'group_chat_id' => $groupChat->id,
-                'track' => $track
-            ]);
+        // Count submissions by status from review_images
+        $imageStats = DB::table('review_images')
+            ->whereIn('group_id', $groupChatIds)
+            ->selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status')
+            ->toArray();
             
-            if ($track === 'approved') {
-                $approved++;
-            } elseif ($track === 'review') {
-                $inReview++;
-            } else {
-                // 'pending' or null
-                $pendingTasks++;
-            }
-        }
+        // Combine stats
+        $pendingSubmissions = ($contentStats['pending'] ?? 0) + ($imageStats['pending'] ?? 0);
+        $approvedSubmissions = ($contentStats['approved'] ?? 0) + ($imageStats['approved'] ?? 0);
+        $rejectedSubmissions = ($contentStats['rejected'] ?? 0) + ($imageStats['rejected'] ?? 0);
+        
+        // Pending tasks: Group chats without any submissions
+        $groupChatsWithSubmissions = DB::table('review_content')
+            ->whereIn('group_id', $groupChatIds)
+            ->select('group_id')
+            ->union(
+                DB::table('review_images')
+                    ->whereIn('group_id', $groupChatIds)
+                    ->select('group_id')
+            )
+            ->distinct()
+            ->pluck('group_id')
+            ->toArray();
+            
+        $pendingTasks = count($groupChatIds) - count($groupChatsWithSubmissions);
         
         // Active Projects: Total group chats user is part of
-        $activeProjects = $userGroupChats->count();
+        $activeProjects = count($groupChatIds);
         
-        Log::info('Final dashboard stats', [
+        Log::info('Final dashboard stats from submissions', [
             'user_id' => $user->id,
-            'pending_tasks' => $pendingTasks,
-            'in_review' => $inReview,
-            'approved' => $approved,
+            'pending_tasks' => $pendingTasks, // group chats without submissions
+            'in_review' => $pendingSubmissions, // submissions with status 'pending'
+            'approved' => $approvedSubmissions, // submissions with status 'approved'
             'active_projects' => $activeProjects
         ]);
         
@@ -1688,8 +1700,8 @@ class ArticleController extends Controller
 
         return response()->json([
             'pending_tasks' => $pendingTasks,
-            'in_review' => $inReview,
-            'approved' => $approved,
+            'in_review' => $pendingSubmissions,
+            'approved' => $approvedSubmissions,
             'active_projects' => $activeProjects,
             'upcoming_activities' => $upcomingActivities,
             'top_contributors' => $topContributors,
