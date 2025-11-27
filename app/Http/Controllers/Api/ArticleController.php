@@ -1489,10 +1489,26 @@ class ArticleController extends Controller
                     ->pluck('count', 'track')
                     ->toArray();
 
+                // Also get group names for each status
+                $groupChatDetails = DB::table('group_chats')
+                    ->whereIn('id', $groupChatIds)
+                    ->select('id', 'name', 'track')
+                    ->get()
+                    ->groupBy('track');
+
                 $groupChatStatusData = [
-                    'approved' => $groupChatTrackStats['approved'] ?? 0,
-                    'in_review' => $groupChatTrackStats['review'] ?? 0,
-                    'pending' => $groupChatTrackStats['pending'] ?? 0
+                    'approved' => [
+                        'count' => $groupChatTrackStats['approved'] ?? 0,
+                        'groups' => ($groupChatDetails['approved'] ?? collect())->pluck('name')->toArray()
+                    ],
+                    'review' => [
+                        'count' => $groupChatTrackStats['review'] ?? 0,
+                        'groups' => ($groupChatDetails['review'] ?? collect())->pluck('name')->toArray()
+                    ],
+                    'pending' => [
+                        'count' => $groupChatTrackStats['pending'] ?? 0,
+                        'groups' => ($groupChatDetails['pending'] ?? collect())->pluck('name')->toArray()
+                    ]
                 ];
 
                 Log::info('Group chat status data', ['group_chat_status_data' => $groupChatStatusData]);
@@ -1500,9 +1516,37 @@ class ArticleController extends Controller
                 Log::error('Error fetching group chat status: ' . $e->getMessage());
             }
 
+            // Article publications by genre (most viewed)
+            $articlePublications = [];
+            try {
+                $articlePublications = DB::table('articles')
+                    ->join('article_metrics', 'articles.id', '=', 'article_metrics.article_id')
+                    ->selectRaw('articles.genre, SUM(article_metrics.visits) as count')
+                    ->where('articles.status', 'published')
+                    ->whereNotNull('articles.genre')
+                    ->where('articles.genre', '!=', '')
+                    ->groupBy('articles.genre')
+                    ->orderByDesc('count')
+                    ->limit(10) // Top 10 genres
+                    ->get()
+                    ->map(function($item) {
+                        return [
+                            'genre' => $item->genre,
+                            'count' => (int) $item->count
+                        ];
+                    })
+                    ->toArray();
+
+                Log::info('Article publications data', ['article_publications' => $articlePublications]);
+            } catch (\Exception $e) {
+                Log::error('Error fetching article publications: ' . $e->getMessage());
+                $articlePublications = [];
+            }
+
             return response()->json([
                 'content_submissions' => $submissionsData,
-                'group_chat_status' => $groupChatStatusData
+                'group_chat_status' => $groupChatStatusData,
+                'article_publications' => $articlePublications
             ]);
 
         } catch (\Exception $e) {
