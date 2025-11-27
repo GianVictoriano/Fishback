@@ -1472,7 +1472,7 @@ class ArticleController extends Controller
 
             Log::info('Final submissions data', ['submissions_data' => $submissionsData]);
 
-            // Group Chat Status Distribution
+            // Group Chat Status Distribution - count by track status
             $groupChatStatusData = [
                 'approved' => 0,
                 'in_review' => 0,
@@ -1481,25 +1481,18 @@ class ArticleController extends Controller
 
             try {
                 $groupChatIds = $user->groupChats()->pluck('group_chats.id')->toArray();
-
-                $statusCounts = DB::table('review_content')
-                    ->whereIn('group_id', $groupChatIds)
-                    ->selectRaw('status, COUNT(*) as count')
-                    ->groupBy('status')
-                    ->pluck('count', 'status')
-                    ->toArray();
-
-                $imageStatusCounts = DB::table('review_images')
-                    ->whereIn('group_id', $groupChatIds)
-                    ->selectRaw('status, COUNT(*) as count')
-                    ->groupBy('status')
-                    ->pluck('count', 'status')
+                
+                $groupChatTrackStats = DB::table('group_chats')
+                    ->whereIn('id', $groupChatIds)
+                    ->selectRaw('track, COUNT(*) as count')
+                    ->groupBy('track')
+                    ->pluck('count', 'track')
                     ->toArray();
 
                 $groupChatStatusData = [
-                    'approved' => ($statusCounts['approved'] ?? 0) + ($imageStatusCounts['approved'] ?? 0),
-                    'in_review' => ($statusCounts['in_review'] ?? 0) + ($imageStatusCounts['in_review'] ?? 0),
-                    'pending' => ($statusCounts['pending'] ?? 0) + ($imageStatusCounts['pending'] ?? 0)
+                    'approved' => $groupChatTrackStats['approved'] ?? 0,
+                    'in_review' => $groupChatTrackStats['review'] ?? 0,
+                    'pending' => $groupChatTrackStats['pending'] ?? 0
                 ];
 
                 Log::info('Group chat status data', ['group_chat_status_data' => $groupChatStatusData]);
@@ -1537,26 +1530,18 @@ class ArticleController extends Controller
         // Get content submissions stats from review_content and review_images tables
         $groupChatIds = $userGroupChats->pluck('id')->toArray();
         
-        // Count submissions by status from review_content
-        $contentStats = DB::table('review_content')
-            ->whereIn('group_id', $groupChatIds)
-            ->selectRaw('status, COUNT(*) as count')
-            ->groupBy('status')
-            ->pluck('count', 'status')
+        // Count group chats by track status instead of counting individual submissions
+        $groupChatStats = DB::table('group_chats')
+            ->whereIn('id', $groupChatIds)
+            ->selectRaw('track, COUNT(*) as count')
+            ->groupBy('track')
+            ->pluck('count', 'track')
             ->toArray();
-            
-        // Count submissions by status from review_images
-        $imageStats = DB::table('review_images')
-            ->whereIn('group_id', $groupChatIds)
-            ->selectRaw('status, COUNT(*) as count')
-            ->groupBy('status')
-            ->pluck('count', 'status')
-            ->toArray();
-            
-        // Combine stats
-        $pendingSubmissions = ($contentStats['pending'] ?? 0) + ($imageStats['pending'] ?? 0);
-        $approvedSubmissions = ($contentStats['approved'] ?? 0) + ($imageStats['approved'] ?? 0);
-        $rejectedSubmissions = ($contentStats['rejected'] ?? 0) + ($imageStats['rejected'] ?? 0);
+
+        // Get stats from group chat track status
+        $pendingSubmissions = $groupChatStats['pending'] ?? 0;
+        $approvedSubmissions = $groupChatStats['approved'] ?? 0;
+        $inReviewSubmissions = $groupChatStats['review'] ?? 0;
         
         // Pending tasks: Group chats without any submissions
         $groupChatsWithSubmissions = DB::table('review_content')
@@ -1579,7 +1564,7 @@ class ArticleController extends Controller
         Log::info('Final dashboard stats from submissions', [
             'user_id' => $user->id,
             'pending_tasks' => $pendingTasks, // group chats without submissions
-            'in_review' => $pendingSubmissions, // submissions with status 'pending'
+            'in_review' => $inReviewSubmissions, // submissions with status 'in_review'
             'approved' => $approvedSubmissions, // submissions with status 'approved'
             'active_projects' => $activeProjects
         ]);
@@ -1735,7 +1720,7 @@ class ArticleController extends Controller
 
         return response()->json([
             'pending_tasks' => $pendingTasks,
-            'in_review' => $pendingSubmissions,
+            'in_review' => $inReviewSubmissions,
             'approved' => $approvedSubmissions,
             'active_projects' => $activeProjects,
             'upcoming_activities' => $upcomingActivities,
