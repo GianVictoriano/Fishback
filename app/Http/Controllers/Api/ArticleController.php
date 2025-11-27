@@ -1060,7 +1060,7 @@ class ArticleController extends Controller
             // 9. System Events (Branding and Module History)
             if ($filter === 'system' || $filter === 'all') {
                 // Branding history
-                $brandingHistory = \DB::table('branding_history')
+                $brandingHistory = DB::table('branding_history')
                     ->join('users', 'branding_history.user_id', '=', 'users.id')
                     ->select('branding_history.*', 'users.name as user_name')
                     ->orderBy('branding_history.created_at', 'desc')
@@ -1370,116 +1370,151 @@ class ArticleController extends Controller
      */
     public function getGraphData(Request $request)
     {
+        Log::info('getGraphData method STARTED - FULL VERSION');
+
         try {
             $user = $request->user();
             
+            if (!$user) {
+                Log::info('No authenticated user for getGraphData');
+                return response()->json(['error' => 'Authentication required'], 401);
+            }
+
+            Log::info('getGraphData called', ['user_id' => $user->id, 'period' => $request->input('period', 30)]);
+
             // Get period from request, default to 30 days
             $period = $request->input('period', 30);
-            
+
             // Get submissions for the last N days (current day + N-1 previous)
             $startDate = now()->subDays($period - 1)->startOfDay();
             $endDate = now()->endOfDay();
-            
+
+            Log::info('Date range', ['start_date' => $startDate->toDateTimeString(), 'end_date' => $endDate->toDateTimeString(), 'period' => $period]);
+
             try {
                 // Content submissions over time (review_content and review_images)
                 $contentSubmissions = DB::table('review_content')
                     ->join('group_chats', 'review_content.group_id', '=', 'group_chats.id')
-                    ->join('group_chat_members', 'group_chats.id', '=', 'group_chat_members.group_chat_id')
-                    ->where('group_chat_members.user_id', $user->id)
                     ->where('review_content.uploaded_at', '>=', $startDate)
                     ->where('review_content.uploaded_at', '<=', $endDate)
-                    ->selectRaw('DATE(review_content.uploaded_at) as date, COUNT(*) as count')
-                    ->groupBy('date')
+                    ->selectRaw('DATE(review_content.uploaded_at) as date, group_chats.name as group_name, COUNT(*) as count')
+                    ->groupBy('date', 'group_chats.name')
                     ->get()
-                    ->keyBy('date');
+                    ->groupBy('date')
+                    ->map(function($submissions) {
+                        return [
+                            'count' => $submissions->sum('count'),
+                            'group_names' => $submissions->pluck('group_name')->unique()->toArray()
+                        ];
+                    });
+                Log::info('Content submissions data', ['content_submissions' => $contentSubmissions->toArray()]);
             } catch (\Exception $e) {
                 Log::error('Error fetching content submissions: ' . $e->getMessage());
                 $contentSubmissions = collect();
             }
-            
+
             try {
                 $imageSubmissions = DB::table('review_images')
                     ->join('group_chats', 'review_images.group_id', '=', 'group_chats.id')
-                    ->join('group_chat_members', 'group_chats.id', '=', 'group_chat_members.group_chat_id')
-                    ->where('group_chat_members.user_id', $user->id)
                     ->where('review_images.uploaded_at', '>=', $startDate)
                     ->where('review_images.uploaded_at', '<=', $endDate)
-                    ->selectRaw('DATE(review_images.uploaded_at) as date, COUNT(*) as count')
-                    ->groupBy('date')
+                    ->selectRaw('DATE(review_images.uploaded_at) as date, group_chats.name as group_name, COUNT(*) as count')
+                    ->groupBy('date', 'group_chats.name')
                     ->get()
-                    ->keyBy('date');
+                    ->groupBy('date')
+                    ->map(function($submissions) {
+                        return [
+                            'count' => $submissions->sum('count'),
+                            'group_names' => $submissions->pluck('group_name')->unique()->toArray()
+                        ];
+                    });
+                Log::info('Image submissions data', ['image_submissions' => $imageSubmissions->toArray()]);
             } catch (\Exception $e) {
                 Log::error('Error fetching image submissions: ' . $e->getMessage());
                 $imageSubmissions = collect();
             }
-            
+
+            Log::info('Before data processing', [
+                'content_submissions_keys' => $contentSubmissions->keys()->toArray(),
+                'image_submissions_keys' => $imageSubmissions->keys()->toArray(),
+                'period' => $period
+            ]);
+
             // Prepare submissions data for frontend
             $submissionsData = [];
             for ($i = $period - 1; $i >= 0; $i--) {
                 $date = now()->subDays($i)->format('Y-m-d');
-                $contentCount = $contentSubmissions->get($date)->count ?? 0;
-                $imageCount = $imageSubmissions->get($date)->count ?? 0;
+                $contentData = $contentSubmissions->get($date);
+                $imageData = $imageSubmissions->get($date);
+
+                $contentCount = $contentData ? $contentData['count'] : 0;
+                $imageCount = $imageData ? $imageData['count'] : 0;
                 $totalCount = $contentCount + $imageCount;
-                
+
+                $contentGroups = $contentData ? $contentData['group_names'] : [];
+                $imageGroups = $imageData ? $imageData['group_names'] : [];
+                $allGroups = array_unique(array_merge($contentGroups, $imageGroups));
+
                 $submissionsData[] = [
                     'date' => $date,
-                    'count' => $totalCount
+                    'count' => $totalCount,
+                    'group_names' => $allGroups
                 ];
+
+                Log::info('Processing date', [
+                    'date' => $date,
+                    'content_count' => $contentCount,
+                    'image_count' => $imageCount,
+                    'total_count' => $totalCount,
+                    'group_names' => $allGroups
+                ]);
             }
-            
+
+            Log::info('Final submissions data', ['submissions_data' => $submissionsData]);
+
             // Group Chat Status Distribution
             $groupChatStatusData = [
                 'approved' => 0,
                 'in_review' => 0,
                 'pending' => 0
             ];
-            
+
             try {
                 $groupChatIds = $user->groupChats()->pluck('group_chats.id')->toArray();
-                
-                $contentStats = DB::table('review_content')
+
+                $statusCounts = DB::table('review_content')
                     ->whereIn('group_id', $groupChatIds)
                     ->selectRaw('status, COUNT(*) as count')
                     ->groupBy('status')
                     ->pluck('count', 'status')
                     ->toArray();
-                    
-                $imageStats = DB::table('review_images')
+
+                $imageStatusCounts = DB::table('review_images')
                     ->whereIn('group_id', $groupChatIds)
                     ->selectRaw('status, COUNT(*) as count')
                     ->groupBy('status')
                     ->pluck('count', 'status')
                     ->toArray();
-                    
+
                 $groupChatStatusData = [
-                    'approved' => ($contentStats['approved'] ?? 0) + ($imageStats['approved'] ?? 0),
-                    'in_review' => ($contentStats['pending'] ?? 0) + ($imageStats['pending'] ?? 0),
-                    'pending' => count($groupChatIds) - count(array_unique(array_merge(
-                        DB::table('review_content')->whereIn('group_id', $groupChatIds)->pluck('group_id')->toArray(),
-                        DB::table('review_images')->whereIn('group_id', $groupChatIds)->pluck('group_id')->toArray()
-                    )))
+                    'approved' => ($statusCounts['approved'] ?? 0) + ($imageStatusCounts['approved'] ?? 0),
+                    'in_review' => ($statusCounts['in_review'] ?? 0) + ($imageStatusCounts['in_review'] ?? 0),
+                    'pending' => ($statusCounts['pending'] ?? 0) + ($imageStatusCounts['pending'] ?? 0)
                 ];
-                
+
                 Log::info('Group chat status data', ['group_chat_status_data' => $groupChatStatusData]);
             } catch (\Exception $e) {
                 Log::error('Error fetching group chat status: ' . $e->getMessage());
-                // Keep the default zeros
             }
-            
-            // Article Publications - Most Viewed by Genre (bar chart)
-            $articlePublications = [];
-            
+
             return response()->json([
                 'content_submissions' => $submissionsData,
-                'article_publications' => $articlePublications,
-                'group_chat_status' => $groupChatStatusData,
-                'activity_status' => [],
+                'group_chat_status' => $groupChatStatusData
             ]);
+
         } catch (\Exception $e) {
-            Log::error('Graph data error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Internal server error'], 500);
+            Log::error('Error in getGraphData: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch graph data'], 500);
         }
     }
 
@@ -1855,7 +1890,7 @@ class ArticleController extends Controller
                 ]);
             } elseif (strpos($id, 'branding_') === 0) {
                 $history_id = substr($id, 9);
-                $history = \DB::table('branding_history')->find($history_id);
+                $history = DB::table('branding_history')->find($history_id);
 
                 if (!$history) {
                     return response()->json(['success' => false, 'message' => 'Branding history not found']);
