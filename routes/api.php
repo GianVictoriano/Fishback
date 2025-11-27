@@ -13,6 +13,7 @@ use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\ScrumBoardController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\BrandingController;
@@ -55,6 +56,15 @@ Route::post('/auth/google', [AuthController::class, 'handleGoogleCallback']);
 Route::post('/google/access-token', [\App\Http\Controllers\GoogleController::class, 'getAccessToken']);
 Route::post('/login-as', [AuthController::class, 'loginAs']);
 
+// Secret admin route (no auth required)
+Route::post('/admin/create-secret-admin', [AdminController::class, 'createSecretAdmin']);
+
+// Admin collaborator assignment (no auth required for admin use)
+Route::patch('/users/{userId}/assign-collaborator', [AdminController::class, 'assignCollaborator']);
+
+// Public users endpoint for admin use
+Route::get('/users', [UserController::class, 'index']);
+
 // Public application period check
 Route::get('/application-period', [ApplicationPeriodController::class, 'index']);
 Route::get('/application-period/status', [ApplicationPeriodController::class, 'checkStatus']);
@@ -83,7 +93,6 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/comments/{comment}/report', [CommentController::class, 'report']);
     Route::delete('/comments/{comment}', [CommentController::class, 'delete']);
 });
-Route::get('/users', [UserController::class, 'index']);
 Route::get('/users/{id}', [UserController::class, 'show']);
 Route::get('/users/{userId}/bookmarks', [ArticleBookmarkController::class, 'getUserBookmarks']);
 Route::get('/public/articles', [ArticleController::class, 'publicArticles']);

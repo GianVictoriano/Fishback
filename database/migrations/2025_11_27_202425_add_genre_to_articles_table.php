@@ -11,12 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('group_chats', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->foreignId('scrum_board_id')->constrained()->onDelete('cascade');
-            $table->timestamps();
-            $table->string('status')->default('active');
+        Schema::table('articles', function (Blueprint $table) {
+            $table->string('genre')->nullable()->after('content');
         });
     }
 
@@ -25,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('group_chats');
+        Schema::table('articles', function (Blueprint $table) {
+            $table->dropColumn('genre');
+        });
     }
 };
