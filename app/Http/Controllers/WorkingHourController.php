@@ -93,8 +93,11 @@ class WorkingHourController extends Controller
 
         $user = Auth::user();
 
+        // Delete all existing working hours for this user first
+        WorkingHour::where('user_id', $user->id)->delete();
+
+        // Create new entries
         foreach ($workingHoursData as $data) {
-            // Create a new entry for each time slot instead of updating existing ones
             WorkingHour::create([
                 'user_id' => $user->id,
                 'day_of_week' => $data['day_of_week'],
