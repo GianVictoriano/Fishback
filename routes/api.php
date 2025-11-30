@@ -171,6 +171,8 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/group-chats/{groupChat}/messages', [ChatMessageController::class, 'index']);
     Route::post('/group-chats/{groupChat}/messages', [ChatMessageController::class, 'store']);
     Route::get('/group-chats/{groupChat}/members', [GroupChatController::class, 'getMembers']);
+    Route::post('/group-chats/{groupChat}/members', [GroupChatController::class, 'addMember']);
+    Route::delete('/group-chats/{groupChat}/members/{user}', [GroupChatController::class, 'removeMember']);
     Route::patch('/group-chats/{groupChat}/status', [GroupChatController::class, 'updateStatus']);
 
     // Plagiarism Scans
@@ -211,6 +213,8 @@ Route::middleware('force.api.auth')->group(function () {
 
     // Scrum Board
     Route::post('/scrum-boards', [ScrumBoardController::class, 'store']);
+    Route::put('/scrum-boards/{scrumBoard}', [ScrumBoardController::class, 'update']);
+    Route::patch('/scrum-boards/{scrumBoard}', [ScrumBoardController::class, 'update']);
 
     // Activities
     Route::get('/activities', [ActivityController::class, 'index']);

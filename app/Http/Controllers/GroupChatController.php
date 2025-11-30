@@ -108,4 +108,92 @@ class GroupChatController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Add a member to a group chat
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function addMember(Request $request, $id)
+    {
+        try {
+            $groupChat = GroupChat::findOrFail($id);
+            
+            $validated = $request->validate([
+                'user_id' => 'sometimes|exists:users,id',
+                'member_id' => 'sometimes|exists:users,id'
+            ]);
+            
+            // Accept either user_id or member_id
+            $user_id = $validated['user_id'] ?? $validated['member_id'] ?? null;
+            
+            if (!$user_id) {
+                return response()->json([
+                    'message' => 'Either user_id or member_id is required.'
+                ], 422);
+            }
+            
+            // Check if user is already a member
+            if ($groupChat->members()->where('user_id', $user_id)->exists()) {
+                return response()->json([
+                    'message' => 'User is already a member of this group chat.'
+                ], 409);
+            }
+            
+            // Add the member
+            $groupChat->members()->attach($user_id);
+            
+            // Return updated members list
+            $members = $groupChat->members()->with('profile')->get();
+            
+            return response()->json([
+                'message' => 'Member added successfully.',
+                'data' => $members
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to add member to group chat.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove a member from a group chat
+     *
+     * @param int $groupChatId
+     * @param int $userId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function removeMember($groupChatId, $userId)
+    {
+        try {
+            $groupChat = GroupChat::findOrFail($groupChatId);
+            
+            // Check if user is a member
+            if (!$groupChat->members()->where('user_id', $userId)->exists()) {
+                return response()->json([
+                    'message' => 'User is not a member of this group chat.'
+                ], 404);
+            }
+            
+            // Remove the member
+            $groupChat->members()->detach($userId);
+            
+            // Return updated members list
+            $members = $groupChat->members()->with('profile')->get();
+            
+            return response()->json([
+                'message' => 'Member removed successfully.',
+                'data' => $members
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to remove member from group chat.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

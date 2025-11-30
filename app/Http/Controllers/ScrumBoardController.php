@@ -86,7 +86,42 @@ class ScrumBoardController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        try {
+            $scrumBoard = ScrumBoard::findOrFail($id);
+            
+            $validated = $request->validate([
+                'lead_reviewer_id' => 'sometimes|exists:users,id',
+                'title' => 'sometimes|string|max:255',
+                'category' => 'sometimes|string|max:100',
+                'deadline' => 'nullable|date',
+            ]);
+            
+            // Update only the fields that are provided
+            if (isset($validated['lead_reviewer_id'])) {
+                $scrumBoard->lead_reviewer_id = $validated['lead_reviewer_id'];
+            }
+            if (isset($validated['title'])) {
+                $scrumBoard->title = $validated['title'];
+            }
+            if (isset($validated['category'])) {
+                $scrumBoard->category = $validated['category'];
+            }
+            if (isset($validated['deadline'])) {
+                $scrumBoard->deadline = $validated['deadline'];
+            }
+            
+            $scrumBoard->save();
+            
+            return response()->json([
+                'message' => 'Scrum board updated successfully.',
+                'scrum_board' => $scrumBoard
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to update scrum board.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
