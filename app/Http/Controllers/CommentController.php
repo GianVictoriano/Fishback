@@ -14,7 +14,7 @@ class CommentController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'body' => 'required|string',
-            'secret' => 'required|boolean',
+            'secret' => 'required|in:0,1,true,false',
         ]);
 
         if ($validator->fails()) {

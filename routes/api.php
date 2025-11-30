@@ -30,6 +30,7 @@ use App\Http\Controllers\ImportantNoteController;
 use App\Http\Controllers\Api\CoverageRequestController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\WorkingHourController;
+use App\Http\Controllers\BroadcastController;
 
 /*
 |--------------------------------------------------------------------------
@@ -98,6 +99,7 @@ Route::get('/users/{userId}/bookmarks', [ArticleBookmarkController::class, 'getU
 Route::get('/public/articles', [ArticleController::class, 'publicArticles']);
 Route::get('/public/article-summaries', [ArticleController::class, 'publicArticleSummaries']);
 Route::get('/public/trending-articles', [ArticleController::class, 'trendingArticles']);
+Route::get('/public/latest-articles', [ArticleController::class, 'latestArticles']);
 Route::get('/public/featured-articles', [ArticleController::class, 'publicFeaturedArticles']);
 Route::get('/public/articles/{article}', [ArticleController::class, 'show']);
 Route::post('/public/articles/{article}/react', [ArticleController::class, 'react']);
@@ -279,4 +281,10 @@ Route::middleware('force.api.auth')->group(function () {
     Route::apiResource('creatives', App\Http\Controllers\CreativeController::class);
     Route::get('/my-creatives', [App\Http\Controllers\CreativeController::class, 'myCreatives']);
     Route::get('/creatives-published', [App\Http\Controllers\CreativeController::class, 'published']);
+
+    // Broadcasts
+    Route::post('/broadcasts', [BroadcastController::class, 'store']);
+    Route::get('/broadcasts', [BroadcastController::class, 'index']);
+    Route::get('/my-broadcasts', [BroadcastController::class, 'myBroadcasts']);
+    Route::post('/broadcasts/{broadcast}/respond', [BroadcastController::class, 'respond']);
 });

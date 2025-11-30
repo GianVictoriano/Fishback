@@ -21,6 +21,10 @@ class Comment extends Model
         'status',
     ];
 
+    protected $casts = [
+        'secret' => 'boolean',
+    ];
+
     protected $attributes = [
         'status' => self::STATUS_ACTIVE,
     ];

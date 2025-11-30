@@ -251,6 +251,30 @@ class ArticleController extends Controller
         return ArticleResource::collection($articles);
     }
 
+    public function latestArticles(Request $request)
+    {
+        $limit = 25;
+        $genre = $request->query('genre');
+
+        // Get latest articles by publication date
+        $query = Article::with(['media', 'metrics'])
+            ->where('status', 'published')
+            ->whereNotNull('published_at')
+            ->where('status', '!=', 'archived'); // Exclude archived articles
+        
+        // Apply genre filter if provided
+        if ($genre) {
+            $query->where('genre', $genre);
+        }
+        
+        $articles = $query
+            ->orderBy('published_at', 'desc')
+            ->limit($limit)
+            ->get();
+
+        return ArticleResource::collection($articles);
+    }
+
     public function react(Request $request, Article $article)
     {
         try {
@@ -1346,7 +1370,7 @@ class ArticleController extends Controller
     public function publicFeaturedArticles(Request $request)
     {
         try {
-            $articles = Article::with(['media', 'user'])
+            $articles = Article::with(['media'])
                 ->where('status', 'published')
                 ->where('status', '!=', 'archived') // Exclude archived articles
                 ->whereHas('featured')

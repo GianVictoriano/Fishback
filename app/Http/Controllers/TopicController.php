@@ -10,9 +10,34 @@ use Illuminate\Support\Facades\Validator;
 class TopicController extends Controller
 {
     // GET /api/topics
-    public function index()
+    public function index(Request $request)
     {
-        $topics = Topic::with(['user.profile', 'comments.user.profile'])->latest()->get();
+        $page = $request->get('page', 1);
+        $perPage = 20;
+        
+        $query = Topic::with(['user.profile'])
+            ->withCount('comments'); // Add comment count
+        
+        // Handle search on backend
+        if ($request->has('search')) {
+            $search = $request->get('search');
+            if (str_starts_with($search, '#')) {
+                // Search in category for hashtag searches
+                $hashtag = substr($search, 1);
+                $query->where('category', 'LIKE', '%'.$hashtag.'%');
+            } else {
+                // Search in title for regular searches
+                $query->where('title', 'LIKE', '%'.$search.'%');
+            }
+        }
+        
+        // Handle category filter
+        if ($request->has('category') && $request->get('category') !== 'All') {
+            $query->where('category', $request->get('category'));
+        }
+        
+        $topics = $query->latest()->paginate($perPage, ['*'], 'page', $page);
+        
         return response()->json($topics);
     }
 
@@ -22,7 +47,7 @@ class TopicController extends Controller
         $validator = Validator::make($request->all(), [
             'title' => 'required|string|max:255',
             'body' => 'nullable|string',
-            'category' => 'required|string|max:50',
+            'category' => 'nullable|string|max:50',
             'secret' => 'required|boolean',
         ]);
 
