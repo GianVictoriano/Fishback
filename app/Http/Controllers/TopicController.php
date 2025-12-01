@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Topic;
+use App\Models\Comment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -15,8 +16,12 @@ class TopicController extends Controller
         $page = $request->get('page', 1);
         $perPage = 20;
         
-        $query = Topic::with(['user.profile'])
-            ->withCount('comments'); // Add comment count
+        $query = Topic::with(['user.profile', 'comments' => function($query) {
+            $query->where('status', '!=', Comment::STATUS_DELETED);
+        }, 'comments.user.profile'])
+            ->withCount(['comments' => function($query) {
+            $query->where('status', '!=', Comment::STATUS_DELETED);
+        }]); // Add comment count
         
         // Handle search on backend
         if ($request->has('search')) {
@@ -92,7 +97,9 @@ class TopicController extends Controller
     // GET /api/topics/{topic}
     public function show(Topic $topic)
     {
-        $topic->load(['user.profile', 'comments.user.profile']);
+        $topic->load(['user.profile', 'comments' => function($query) {
+            $query->where('status', '!=', Comment::STATUS_DELETED);
+        }, 'comments.user.profile']);
         return response()->json($topic);
     }
 }

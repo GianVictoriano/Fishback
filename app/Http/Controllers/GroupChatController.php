@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\GroupChat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class GroupChatController extends Controller
 {
@@ -192,6 +193,31 @@ class GroupChatController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to remove member from group chat.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a group chat
+     *
+     * @param int $groupChatId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function destroy($groupChatId)
+    {
+        try {
+            $groupChat = GroupChat::findOrFail($groupChatId);
+            
+            // Delete the group chat (this will also delete related records due to foreign key constraints)
+            $groupChat->delete();
+            
+            return response()->json([
+                'message' => 'Group chat deleted successfully.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to delete group chat.',
                 'error' => $e->getMessage()
             ], 500);
         }

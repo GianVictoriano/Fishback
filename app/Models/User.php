@@ -9,6 +9,10 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Notifications\Auth\CustomResetPasswordNotification;
 use App\Models\WorkingHour;
+use App\Models\GroupChat;
+use App\Models\Profile;
+use App\Models\Article;
+use App\Models\Activity;
 
 class User extends Authenticatable
 {

@@ -168,6 +168,7 @@ Route::middleware('force.api.auth')->group(function () {
     // Group Chat & Messages
     Route::get('/group-chats', [GroupChatController::class, 'index']);
     Route::get('/group-chats/{groupChat}', [GroupChatController::class, 'show']);
+    Route::delete('/group-chats/{groupChat}', [GroupChatController::class, 'destroy']);
     Route::get('/group-chats/{groupChat}/messages', [ChatMessageController::class, 'index']);
     Route::post('/group-chats/{groupChat}/messages', [ChatMessageController::class, 'store']);
     Route::get('/group-chats/{groupChat}/members', [GroupChatController::class, 'getMembers']);

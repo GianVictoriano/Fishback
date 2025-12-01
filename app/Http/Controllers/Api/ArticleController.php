@@ -1800,53 +1800,51 @@ class ArticleController extends Controller
     public function getPublicationDeadlines(Request $request)
     {
         try {
-            // Get all scrum boards with deadlines, then get their associated group chats (like dashboard timeline)
-            $scrumBoardsWithDeadlines = \App\Models\ScrumBoard::with(['groupChat.members.profile', 'leadReviewer'])
-                ->whereNotNull('deadline')
+            // Optimized single query with proper JOINs and aggregations
+            $deadlines = DB::table('group_chats AS gc')
+                ->join('scrum_boards AS sb', 'gc.scrum_board_id', '=', 'sb.id')
+                ->leftJoin('users AS lead', 'sb.lead_reviewer_id', '=', 'lead.id')
+                ->leftJoin('profiles AS lead_profile', 'lead.id', '=', 'lead_profile.user_id')
+                ->leftJoin('group_chat_members AS gcm', 'gc.id', '=', 'gcm.group_chat_id')
+                ->whereNotNull('sb.deadline')
+                ->select([
+                    'gc.id',
+                    'gc.name',
+                    'sb.deadline',
+                    'gc.track as status',
+                    DB::raw('COUNT(DISTINCT gcm.user_id) as members_count'),
+                    DB::raw('COALESCE(lead_profile.name, lead.name, "Not assigned") as lead_reviewer'),
+                    DB::raw('DATEDIFF(sb.deadline, NOW()) as days_until_deadline'),
+                    DB::raw('CASE 
+                        WHEN DATEDIFF(sb.deadline, NOW()) <= 3 THEN "urgent"
+                        WHEN DATEDIFF(sb.deadline, NOW()) <= 7 THEN "warning" 
+                        ELSE "normal" 
+                    END as urgency')
+                ])
+                ->groupBy('gc.id', 'gc.name', 'sb.deadline', 'gc.track', 'lead.name', 'lead_profile.name')
+                ->orderBy('days_until_deadline')
                 ->get()
-                ->filter(function ($scrumBoard) {
-                    // Ensure the scrum board has an associated group chat
-                    return $scrumBoard->groupChat;
-                })
-                ->map(function ($scrumBoard) {
-                    $groupChat = $scrumBoard->groupChat;
-                    $leadReviewer = $scrumBoard->leadReviewer;
-                    $membersCount = $groupChat->members->count();
-                    
-                    // Calculate days until deadline
-                    $deadlineDate = \Carbon\Carbon::parse($scrumBoard->deadline);
-                    $now = \Carbon\Carbon::now();
-                    $daysUntilDeadline = (int) $now->diffInDays($deadlineDate, false); // false = can be negative
-                    
-                    return [
-                        'id' => $groupChat->id,
-                        'name' => $groupChat->name,
-                        'deadline' => $deadlineDate->format('M d, Y'),
-                        'deadline_raw' => $scrumBoard->deadline,
-                        'days_until_deadline' => $daysUntilDeadline,
-                        'lead_reviewer' => $leadReviewer ? ($leadReviewer->profile->name ?? $leadReviewer->name) : 'Not assigned',
-                        'members_count' => $membersCount,
-                        'status' => $groupChat->track ?? 'pending',
-                        'urgency' => $daysUntilDeadline <= 3 ? 'urgent' : ($daysUntilDeadline <= 7 ? 'warning' : 'normal'),
-                    ];
-                })
-                ->sortBy('days_until_deadline')
-                ->values();
+                ->map(function ($deadline) {
+                    // Format deadline for frontend compatibility
+                    $deadline->deadline = \Carbon\Carbon::parse($deadline->deadline)->format('M d, Y');
+                    $deadline->deadline_raw = $deadline->deadline;
+                    return $deadline;
+                });
 
             // Group by urgency for graph data
-            $urgent = $scrumBoardsWithDeadlines->where('urgency', 'urgent')->count();
-            $warning = $scrumBoardsWithDeadlines->where('urgency', 'warning')->count();
-            $normal = $scrumBoardsWithDeadlines->where('urgency', 'normal')->count();
+            $urgent = $deadlines->where('urgency', 'urgent')->count();
+            $warning = $deadlines->where('urgency', 'warning')->count();
+            $normal = $deadlines->where('urgency', 'normal')->count();
 
             return response()->json([
                 'success' => true,
-                'deadlines' => $scrumBoardsWithDeadlines,
+                'deadlines' => $deadlines,
                 'graph_data' => [
                     'urgent' => $urgent,
                     'warning' => $warning,
                     'normal' => $normal,
                 ],
-                'total' => $scrumBoardsWithDeadlines->count(),
+                'total' => $deadlines->count(),
             ]);
 
         } catch (\Exception $e) {

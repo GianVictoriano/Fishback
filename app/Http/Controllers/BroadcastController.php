@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class BroadcastController extends Controller
 {
@@ -178,8 +179,9 @@ class BroadcastController extends Controller
         if ($request->response === 'accepted') {
             $recipient->accept($request->message);
             
-            // Add user to activity_members if the activity exists
+            // Handle activity creation and member addition
             if ($broadcast->activity_id) {
+                // Activity already exists, just add the user
                 $activity = \App\Models\Activity::find($broadcast->activity_id);
                 if ($activity) {
                     // Check if user is already a member
@@ -191,10 +193,42 @@ class BroadcastController extends Controller
                         \App\Models\ActivityMember::create([
                             'activity_id' => $broadcast->activity_id,
                             'user_id' => Auth::id(),
-                            'joined_at' => now(),
                             'status' => 'accepted'
                         ]);
                     }
+                }
+            } else {
+                // No activity exists yet, create the activity first
+                try {
+                    DB::beginTransaction();
+                    
+                    // Create the activity from broadcast data
+                    $activity = \App\Models\Activity::create([
+                        'title' => $broadcast->title,
+                        'date' => $broadcast->activity_date,
+                        'description' => $broadcast->description,
+                        'location' => $broadcast->activity_location,
+                        'required_members' => $broadcast->total_required_members,
+                        'created_by' => $broadcast->sender_id,
+                        'status' => 'scheduled',
+                    ]);
+                    
+                    // Update the broadcast with the new activity_id
+                    $broadcast->activity_id = $activity->id;
+                    $broadcast->save();
+                    
+                    // Add the accepting user to the activity
+                    \App\Models\ActivityMember::create([
+                        'activity_id' => $activity->id,
+                        'user_id' => Auth::id(),
+                        'status' => 'accepted'
+                    ]);
+                    
+                    DB::commit();
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    // If activity creation fails, just update the broadcast response without adding to activity_members
+                    Log::error('Failed to create activity from broadcast: ' . $e->getMessage());
                 }
             }
         } else {

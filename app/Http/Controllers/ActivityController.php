@@ -60,22 +60,16 @@ class ActivityController extends Controller
                     'status' => 'scheduled',
                 ]);
 
-                // 2. Collect all member IDs and ensure creator is included
+                // 2. Get member IDs from request (don't automatically add creator)
                 $memberIds = $validated['members'] ?? [];
                 $creatorId = Auth::id();
-                
-                // Add creator to members if not already included
-                if (!in_array($creatorId, $memberIds)) {
-                    $memberIds[] = $creatorId;
-                }
 
-                // 3. Add all members to the activity
+                // 3. Add all members to the activity (only those explicitly selected)
                 foreach ($memberIds as $userId) {
                     ActivityMember::create([
                         'activity_id' => $activity->id,
                         'user_id' => $userId,
-                        // Creator gets 'accepted' status, others get 'invited'
-                        'status' => $userId == $creatorId ? 'accepted' : 'invited',
+                        'status' => 'invited', // All members start as 'invited'
                     ]);
                 }
 
