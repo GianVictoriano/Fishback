@@ -71,6 +71,9 @@ Route::get('/users', [UserController::class, 'index']);
 Route::get('/application-period', [ApplicationPeriodController::class, 'index']);
 Route::get('/application-period/status', [ApplicationPeriodController::class, 'checkStatus']);
 
+// Public folio submission period check
+Route::get('/folio-period', [FolioController::class, 'getActivePeriod']);
+
 // Public routes
 Route::get('/topics', [TopicController::class, 'index']);
 Route::get('/topics/{topic}', [TopicController::class, 'show']);

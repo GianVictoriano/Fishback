@@ -333,4 +333,26 @@ class FolioController extends Controller
             'message' => 'Member removed successfully'
         ]);
     }
+
+    /**
+     * Get the current active folio submission period
+     */
+    public function getActivePeriod()
+    {
+        $now = now();
+        
+        $period = Folio::where('status', 'open')
+            ->where('is_journalists_only', false)
+            ->where('start_date', '<=', $now)
+            ->where('end_date', '>=', $now)
+            ->first();
+
+        if (!$period) {
+            return response()->json([
+                'message' => 'No active folio submission period'
+            ], 404);
+        }
+
+        return response()->json($period);
+    }
 }
