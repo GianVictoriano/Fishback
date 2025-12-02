@@ -13,16 +13,6 @@ class EngagementAnalyticsSeeder extends Seeder
      */
     public function run(): void
     {
-        // Disable foreign key checks temporarily
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
-
-        // Clear existing data
-        DB::table('article_metrics')->truncate();
-        DB::table('articles')->truncate();
-
-        // Re-enable foreign key checks
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
-
         $userId = 1; // Adjust if needed based on your users
 
         // Create 7 recent articles (last 7 days)
