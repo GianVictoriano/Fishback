@@ -12,6 +12,7 @@ class Submission extends Model
 
     protected $fillable = [
         'user_id',
+        'folio_id',
         'genre',
         'title',
         'caption',

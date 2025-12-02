@@ -11,11 +11,16 @@ use Illuminate\Support\Facades\Validator;
 
 class SubmissionController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $submissions = Submission::with(['user', 'reviewer', 'media'])
-            ->orderBy('submitted_at', 'desc')
-            ->paginate(15);
+        $query = Submission::with(['user', 'reviewer', 'media']);
+
+        // Filter by folio_id if provided
+        if ($request->has('folio_id')) {
+            $query->where('folio_id', $request->folio_id);
+        }
+
+        $submissions = $query->orderBy('submitted_at', 'desc')->paginate(15);
 
         return response()->json($submissions);
     }
@@ -39,6 +44,7 @@ class SubmissionController extends Controller
         // Create submission
         $submission = Submission::create([
             'user_id' => Auth::id(),
+            'folio_id' => $request->folio_id,
             'genre' => $request->genre,
             'title' => $request->title,
             'caption' => $request->caption,
