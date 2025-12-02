@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\CoverageRequestController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\WorkingHourController;
 use App\Http\Controllers\BroadcastController;
+use App\Http\Controllers\Api\EngagementAnalyticsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -303,4 +304,10 @@ Route::middleware('force.api.auth')->group(function () {
     Route::get('/broadcasts', [BroadcastController::class, 'index']);
     Route::get('/my-broadcasts', [BroadcastController::class, 'myBroadcasts']);
     Route::post('/broadcasts/{broadcast}/respond', [BroadcastController::class, 'respond']);
+
+    // Engagement Analytics
+    Route::get('/engagement-analytics/reader-behavior', [EngagementAnalyticsController::class, 'getReaderBehavior']);
+    Route::get('/engagement-analytics/content-lifecycle', [EngagementAnalyticsController::class, 'getContentLifecycle']);
+    Route::get('/engagement-analytics/audience-growth', [EngagementAnalyticsController::class, 'getAudienceGrowth']);
+    Route::get('/engagement-analytics/engagement-quality', [EngagementAnalyticsController::class, 'getEngagementQuality']);
 });

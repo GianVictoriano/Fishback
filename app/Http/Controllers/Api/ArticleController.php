@@ -353,11 +353,12 @@ class ArticleController extends Controller
         if (!$visitedToday) {
             $metrics->increment('visits');
             
-            // Add this IP with today's date to the tracking data
+            // Add this IP with today's date and full timestamp to the tracking data
             $visitorData[] = [
                 'ip' => $ip,
-                'date' => $today,
-                'timestamp' => now()->toIso8601String(),
+                'date' => now()->toDateString(),  // Date only: 2025-12-02
+                'timestamp' => now()->toIso8601String(),  // Full timestamp: 2025-12-02T14:30:00Z
+                'datetime' => now()->format('Y-m-d H:i:s'),  // For hour extraction: 2025-12-02 14:30:00
             ];
             $metrics->visitor_ips_with_dates = $visitorData;
             $metrics->save();
