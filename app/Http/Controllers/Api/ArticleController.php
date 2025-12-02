@@ -2065,4 +2065,5 @@ class ArticleController extends Controller
             return response()->json(['success' => false, 'message' => 'Failed to fetch details'], 500);
         }
     }
+    //as
 }
