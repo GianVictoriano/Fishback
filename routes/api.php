@@ -108,6 +108,11 @@ Route::get('/public/recommendations', [ArticleController::class, 'recommendation
 Route::get('/public/activity-data', [ArticleController::class, 'getActivityData']);
 Route::get('/public/activity-details', [ArticleController::class, 'getActivityDetails']);
 
+// Public Creative endpoints
+Route::get('/public/creatives/{creative}', [\App\Http\Controllers\Api\CreativeApiController::class, 'show']);
+Route::post('/public/creatives/{creative}/visit', [\App\Http\Controllers\Api\CreativeApiController::class, 'visit']);
+Route::post('/public/creatives/{creative}/react', [\App\Http\Controllers\Api\CreativeApiController::class, 'react']);
+
 // Protected routes
 Route::middleware('force.api.auth')->group(function () {
     // Auth/User
@@ -277,6 +282,12 @@ Route::middleware('force.api.auth')->group(function () {
     Route::post('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'store']);
     Route::get('/literary-works', [App\Http\Controllers\Api\LiteraryWorkController::class, 'index']);
     Route::get('/literary-works/{id}', [App\Http\Controllers\Api\LiteraryWorkController::class, 'show']);
+    
+    // Literary Works Tracking
+    Route::post('/literary-works/{id}/visit', [App\Http\Controllers\Api\LiteraryWorkController::class, 'trackVisit']);
+    Route::post('/literary-works/{id}/react', [App\Http\Controllers\Api\LiteraryWorkController::class, 'trackReaction']);
+    Route::post('/literary-works/{id}/interaction', [App\Http\Controllers\Api\LiteraryWorkController::class, 'trackInteraction']);
+    Route::get('/literary-works/{id}/metrics', [App\Http\Controllers\Api\LiteraryWorkController::class, 'getMetrics']);
 
     // Submissions (Artwork, Literature, Photography)
     Route::apiResource('submissions', App\Http\Controllers\SubmissionController::class);

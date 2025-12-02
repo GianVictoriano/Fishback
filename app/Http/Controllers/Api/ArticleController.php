@@ -7,6 +7,7 @@ use App\Http\Requests\StoreArticleRequest;
 use App\Http\Resources\ArticleResource;
 use App\Http\Resources\ArticleSummaryResource;
 use App\Models\Article;
+use App\Models\ArticleMetric;
 use App\Models\Featured;
 use App\Services\RecommendationEngine;
 use Illuminate\Http\JsonResponse;
@@ -323,17 +324,67 @@ class ArticleController extends Controller
     public function visit(Request $request, Article $article): JsonResponse
     {
         $ip = $request->ip();
+        $today = now()->toDateString();
         $metrics = $article->metrics()->firstOrCreate(['article_id' => $article->id]);
 
-        $visitorIps = $metrics->visitor_ips ?? [];
-        if (!in_array($ip, $visitorIps)) {
-            $visitorIps[] = $ip;
-            $metrics->visitor_ips = $visitorIps;
-            $metrics->increment('visits');
-            $metrics->save();
+        // Refresh the metrics from database to get latest data
+        $metrics->refresh();
+        
+        // Get visitor IPs with dates from metadata - ensure it's an array
+        $visitorData = is_array($metrics->visitor_ips_with_dates) ? $metrics->visitor_ips_with_dates : [];
+        
+        Log::info('Visit check started', [
+            'article_id' => $article->id,
+            'ip' => $ip,
+            'today' => $today,
+            'current_visitor_data' => $visitorData,
+        ]);
+        
+        // Check if this IP has already visited today
+        $visitedToday = false;
+        foreach ($visitorData as $data) {
+            if (isset($data['ip']) && isset($data['date']) && $data['ip'] === $ip && $data['date'] === $today) {
+                $visitedToday = true;
+                break;
+            }
         }
 
-        return response()->json(['visits' => $metrics->visits]);
+        // Only increment if this is a new unique visitor (new IP or first visit today)
+        if (!$visitedToday) {
+            $metrics->increment('visits');
+            
+            // Add this IP with today's date to the tracking data
+            $visitorData[] = [
+                'ip' => $ip,
+                'date' => $today,
+                'timestamp' => now()->toIso8601String(),
+            ];
+            $metrics->visitor_ips_with_dates = $visitorData;
+            $metrics->save();
+            
+            Log::info('Article visit incremented', [
+                'article_id' => $article->id,
+                'ip' => $ip,
+                'today' => $today,
+                'new_visit_count' => $metrics->visits,
+                'visitor_data' => $visitorData,
+            ]);
+        } else {
+            Log::info('Article visit already recorded today', [
+                'article_id' => $article->id,
+                'ip' => $ip,
+                'today' => $today,
+                'visitor_data' => $visitorData,
+            ]);
+        }
+
+        return response()->json([
+            'visits' => $metrics->visits, 
+            'is_new_visit' => !$visitedToday,
+            'ip' => $ip,
+            'today' => $today,
+            'visitor_data' => $visitorData,
+        ]);
     }
 
     /**
@@ -1567,10 +1618,44 @@ class ArticleController extends Controller
                 $articlePublications = [];
             }
 
+            // Published content over time
+            $publishedContent = [];
+            try {
+                $publishedContentData = DB::table('articles')
+                    ->where('status', 'published')
+                    ->whereNotNull('published_at')
+                    ->where('published_at', '>=', $startDate)
+                    ->where('published_at', '<=', $endDate)
+                    ->selectRaw('DATE(published_at) as date, COUNT(*) as count')
+                    ->groupBy('date')
+                    ->orderBy('date')
+                    ->get()
+                    ->keyBy('date');
+
+                // Prepare published content data for frontend - include all dates in the period
+                $publishedContent = [];
+                for ($i = $period - 1; $i >= 0; $i--) {
+                    $date = now()->subDays($i)->format('Y-m-d');
+                    $publishedData = $publishedContentData->get($date);
+
+                    $publishedContent[] = [
+                        'date' => $date,
+                        'count' => $publishedData ? (int) $publishedData->count : 0,
+                        'group_names' => [] // No group names for published articles
+                    ];
+                }
+
+                Log::info('Published content data', ['published_content' => $publishedContent]);
+            } catch (\Exception $e) {
+                Log::error('Error fetching published content: ' . $e->getMessage());
+                $publishedContent = [];
+            }
+
             return response()->json([
                 'content_submissions' => $submissionsData,
                 'group_chat_status' => $groupChatStatusData,
-                'article_publications' => $articlePublications
+                'article_publications' => $articlePublications,
+                'published_content' => $publishedContent
             ]);
 
         } catch (\Exception $e) {

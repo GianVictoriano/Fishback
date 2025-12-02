@@ -31,6 +31,30 @@ class LiteraryWork extends Model
     }
 
     /**
+     * Get the metrics for this literary work
+     */
+    public function metrics()
+    {
+        return $this->hasOne(LiteraryWorkMetric::class);
+    }
+
+    /**
+     * Get all reactions for this literary work
+     */
+    public function reactions()
+    {
+        return $this->hasMany(LiteraryWorkReaction::class);
+    }
+
+    /**
+     * Get all interactions for this literary work
+     */
+    public function interactions()
+    {
+        return $this->hasMany(LiteraryWorkInteraction::class);
+    }
+
+    /**
      * Check if the work is published
      */
     public function isPublished()

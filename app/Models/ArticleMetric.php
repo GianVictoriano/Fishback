@@ -13,6 +13,7 @@ class ArticleMetric extends Model
         'article_id',
         'visits',
         'visitor_ips',
+        'visitor_ips_with_dates',
         'like_count',
         'heart_count',
         'sad_count',
@@ -21,6 +22,7 @@ class ArticleMetric extends Model
 
     protected $casts = [
         'visitor_ips' => 'array',
+        'visitor_ips_with_dates' => 'array',
     ];
 
     public function article()

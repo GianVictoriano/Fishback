@@ -44,6 +44,18 @@ class Creative extends Model
         return $this->morphMany(Media::class, 'mediable');
     }
 
+    // Metrics relationship
+    public function metrics()
+    {
+        return $this->hasOne(CreativeMetrics::class);
+    }
+
+    // Reactions relationship
+    public function reactions()
+    {
+        return $this->hasMany(CreativeReaction::class);
+    }
+
     // Scopes
     public function scopeDraft($query)
     {
